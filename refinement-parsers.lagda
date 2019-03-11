@@ -130,15 +130,17 @@ and a relation |Match| on |Regex| and |String|.
     _·_ : Regex -> Regex -> Regex
     _∣_ : Regex -> Regex -> Regex
     _* : Regex -> Regex
+    Group : Regex -> Regex
 
-  data Match : Regex × String -> Set where
-    Epsilon : Match (Epsilon , Nil)
-    Singleton : {x : Char} -> Match (Singleton x , (x :: Nil))
-    Concat : {l r : Regex} {ys zs : String} -> Match (l , ys) -> Match (r , zs) -> Match ((l · r) , (ys ++ zs))
-    OrLeft : {l r : Regex} {xs : String} -> Match (l , xs) -> Match ((l ∣ r) , xs)
-    OrRight : {l r : Regex} {xs : String} -> Match (r , xs) -> Match ((l ∣ r) , xs)
-    StarNil : {r : Regex} -> Match ((r *) , Nil)
-    StarConcat : {r : Regex} {xs : String} -> Match ((r · (r *)) , xs) -> Match ((r *) , xs)
+  data Match : Regex -> String -> List String -> Set where
+    Epsilon : Match Epsilon Nil Nil
+    Singleton : {x : Char} -> Match (Singleton x) (x :: Nil) Nil
+    Concat : {l r : Regex} {ys zs : String} {mls mrs : List String} -> Match l ys mls -> Match r zs mrs -> Match (l · r) (ys ++ zs) (mls ++ mrs)
+    OrLeft : {l r : Regex} {xs : String} {ms : List String} -> Match l xs ms -> Match (l ∣ r) xs ms
+    OrRight : {l r : Regex} {xs : String} {ms : List String} -> Match r xs ms -> Match (l ∣ r) xs ms
+    StarNil : {r : Regex} -> Match (r *) Nil Nil
+    StarConcat : {r : Regex} {xs : String} {ms : List String} -> Match (r · (r *)) xs ms -> Match (r *) xs ms
+    Group : {r : Regex} {xs : String} {ms : List String} -> Match r xs ms -> Match (Group r) xs (xs :: ms)
 \end{code}
 
 Using nondeterminism as an effect, we create a function that takes a |Regex| and |String| and gives all potential matchings.
@@ -158,32 +160,24 @@ First, we introduce a utility function that nondeterministically splits a string
     (allSplits xs >>= λ spl -> Pure (splitList (x :: SplitList.lhs spl) (SplitList.rhs spl) (cong (Cons x) (SplitList.cat spl))))
 \end{code}
 
-Given such a splitting and a matching regex for either side, we can find a match for the concatenation of the two regexes.
+In our first version of the |match| function, we do case analysis on the regular expression,
+and inspect the structure of the string.
 \begin{code}
-  unsplit : ∀ {xs l r} (spl : SplitList xs) →
-    Match (l , SplitList.lhs spl) →
-    Match (r , SplitList.rhs spl) →
-    Match ((l · r) , xs)
-  unsplit (splitList lhs rhs refl) ml mr = Concat ml mr
-\end{code}
-
-\begin{code}
-  match : (r : Regex) (xs : String) -> Free ENondet (Match (r , xs))
-  match Empty xs = fail
-  match Epsilon Nil = Pure Epsilon
-  match Epsilon (x :: xs) = fail
-  match (Singleton c) Nil = fail
+  match : (r : Regex) (xs : String) -> Free ENondet (List String)
+  match Empty xs = fail {Sigma (List String) (Match Empty Nil)} >>= λ ()
+  match Epsilon Nil = Pure Nil
+  match Epsilon xs@(_ :: _) = fail {Sigma (List String) (Match Empty Nil)} >>= λ ()
+  match (Singleton c) Nil = fail {Sigma (List String) (Match (Singleton c) Nil)} >>= λ ()
   match (Singleton c) (x :: Nil) with c ≟ x
-  match (Singleton c) (.c :: Nil) | yes refl = Pure Singleton
-  match (Singleton c) (x :: Nil) | no ¬p = fail
-  match (Singleton c) (_ :: _ :: _) = fail
+  match (Singleton c) (.c :: Nil) | yes refl = Pure Nil
+  match (Singleton c) (x :: Nil) | no ¬p = fail {Sigma (List String) (Match (Singleton c) (x :: Nil))} >>= λ {(ms , Singleton) -> magic (¬p refl)}
+  match (Singleton c) xs@(_ :: _ :: _) = fail {Sigma (List String) (Match (Singleton c) xs)} >>= λ ()
   match (l · r) xs = allSplits xs >>=
     λ spl -> match l (SplitList.lhs spl) >>=
     λ ml -> match r (SplitList.rhs spl) >>=
-    λ mr -> Pure (unsplit spl ml mr)
-  match (l ∣ r) xs = split
-    (match l xs >>= λ ml -> Pure (OrLeft ml))
-    (match r xs >>= λ mr -> Pure (OrRight mr))
+    λ mr -> Pure (ml ++ mr)
+  match (l ∣ r) xs = split (match l xs) (match r xs)
+  match (Group r) xs = match r xs >>= λ ms -> Pure (xs :: ms)
 \end{code}
   Unfortunately, we get stuck in the case of |_*|, since it is not immediately obvious that this terminates.
   We just fail in this case.
@@ -192,10 +186,9 @@ Given such a splitting and a matching regex for either side, we can find a match
 \end{code}
 
 Still, we can prove that this program works, as long as the regex does not contain |_*|.
-Since the type guarantees that all output is a correct match,
-we only need to ensure that there is output.
 Thus, the precondition states that the regex contains no Kleene star,
-and the postcondition does not give any restrictions on the output.
+and the postcondition states that the matching is correct,
+with respect to the type |Match|.
 \begin{code}
   hasNo* : Regex -> Set
   hasNo* Empty = ⊤
@@ -204,11 +197,12 @@ and the postcondition does not give any restrictions on the output.
   hasNo* (l · r) = hasNo* l ∧ hasNo* r
   hasNo* (l ∣ r) = hasNo* l ∧ hasNo* r
   hasNo* (r *) = ⊥
+  hasNo* (Group r) = hasNo* r
 
   pre : (r : Regex) (xs : String) -> Set
   pre r xs = hasNo* r
-  post : (r : Regex) (xs : String) -> Match (r , xs) -> Set
-  post _ _ _ = ⊤
+  post : (r : Regex) (xs : String) -> List String -> Set
+  post = Match
 \end{code}
 If we now want to give a correctness proof with respect to these pre- and postconditions,
 we run into an issue in cases where the definition makes use of the |_>>=_| operator.
@@ -237,22 +231,25 @@ Then, using |wpBind|, we incorporate this proof in the correctness proof of |mat
 \begin{code}
   pf : ∀ r xs → wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)
   pf Empty xs P (preH , postH) = λ ()
-  pf Epsilon Nil P (preH , postH) = postH Epsilon tt
+  pf Epsilon Nil P (preH , postH) = postH _ Epsilon
   pf Epsilon (x :: xs) P (preH , postH) = λ ()
-  pf (Singleton c) Nil P (preH , postH) = λ ()
-  pf (Singleton c) (x :: Nil) P (preH , postH) with c ≟ x
-  pf (Singleton c) (.c :: Nil) P (preH , postH) | yes refl = postH Singleton tt
-  ... | no ¬p = λ {Singleton → ¬p refl}
-  pf (Singleton c) (_ :: _ :: _) P (preH , postH) = λ ()
-  pf (l · r) xs P ((preHl , preHr) , postH) =
-    wpBind (const ⊤) (allSplits xs) _ (allSplitsCorrect xs) P λ spl _ →
-    wpBind (const ⊤) (match l _) _ (pf _ _ _ (preHl , λ _ _ -> tt)) _ λ ml _ →
-    wpBind (const ⊤) (match r _) _ (pf _ _ _ (preHr , λ _ _ -> tt)) _ λ mr _ →
-    postH _ tt
-  pf (l ∣ r) xs P ((preHl , preHr) , postH) =
-    wpBind (const ⊤) (match l xs) _ (pf _ _ _ (preHl , λ _ _ -> tt)) _ (λ ml _ → postH _ tt) ,
-    wpBind (const ⊤) (match r xs) _ (pf _ _ _ (preHr , λ _ _ -> tt)) _ (λ mr _ → postH _ tt)
+  pf (Singleton x) Nil P (preH , postH) = λ ()
+  pf (Singleton x) (c :: Nil) P (preH , postH) with x ≟ c
+  pf (Singleton x) (c :: Nil) P (preH , postH) | yes refl = postH _ Singleton
+  pf (Singleton x) (c :: Nil) P (preH , postH) | no ¬p = λ {(ms , Singleton) → ¬p refl}
+  pf (Singleton x) (_ :: _ :: _) P (preH , postH) = λ ()
+  pf (l · r) xs P ((preL , preR) , postH) =
+    wpBind (const ⊤) (allSplits xs) _ (allSplitsCorrect xs) P λ {(splitList ys zs refl) _ ->
+    wpBind (Match l ys) (match l ys) _ (pf l ys _ (preL , λ _ -> id)) P λ mls lH ->
+    wpBind (Match r zs) (match r zs) _ (pf r zs _ (preR , λ _ -> id)) P λ mrs rH ->
+    postH (mls ++ mrs) (Concat lH rH)}
+  pf (l ∣ r) xs P ((preL , preR) , postH) =
+    pf l xs _ (preL , λ o x → postH o (OrLeft x)) ,
+    pf r xs _ (preR , λ o x -> postH o (OrRight x))
   pf (r *) xs P (() , postH)
+  pf (Group r) xs P (preH , postH) =
+    wpBind (Match r xs) (match r xs) _ (pf r xs _ (preH , λ _ -> id)) _
+    λ ms H → postH _ (Group H)
 \end{code}
 
 \section{Combining nondeterminism and general recursion}
