@@ -1,5 +1,4 @@
-\documentclass[acmsmall, anonymous, review]{acmart}
-\settopmatter{printfolios=true,printccs=false,printacmref=false}
+\documentclass{llncs}
 
 %include agda.fmt
 %include refinement-parsers.fmt
@@ -16,11 +15,14 @@ P ⊆ Q = ∀ x -> P x -> Q x
 \end{code}
 %endif
 
+\begin{document}
+
 \title{Verified parsers using the refinement calculus and algebraic effects}
 \author{Tim Baanen \and Wouter Swierstra}
-
-\begin{document}
-\maketitle
+\institute{Utrecht University
+\email{\{t.baanen,w.s.swierstra\}@@uu.nl}}
+%
+\maketitle              % typeset the header of the contribution
 
 There are various ways to write a parser in functional languages, for example using parser combinations.
 How do we ensure these parsers are correct?
@@ -338,3 +340,11 @@ If each right hand side has a nonterminal, then the parser terminates in this we
 \section{Left factorisation?}
 In that proof, do we need to left factorise the language? In that case, can we say something about that operation?
 \end{document}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% TeX-command-default: "lagda2pdf"
+%%% End: 
+
+
