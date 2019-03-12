@@ -224,21 +224,21 @@ We solve this by using the following lemma to replace the left hand side with it
 The correctness proof essentially does the same induction on the |Regex| as the definition of |match| does.
 Since we make use of |allSplits| in the definition, we first give its correctness proof.
 \begin{code}
-  allSplitsCorrect : ∀ (xs : String) →
-    wpNondetAll (allSplits xs) (λ _ → ⊤)
+  allSplitsCorrect : ∀ (xs : String) ->
+    wpNondetAll (allSplits xs) (λ _ -> ⊤)
   allSplitsCorrect Nil = tt
-  allSplitsCorrect (x :: xs) = tt , wpBind (const ⊤) (allSplits xs) _ (allSplitsCorrect xs) _ λ _ _ → tt
+  allSplitsCorrect (x :: xs) = tt , wpBind (const ⊤) (allSplits xs) _ (allSplitsCorrect xs) _ λ _ _ -> tt
 \end{code}
 Then, using |wpBind|, we incorporate this proof in the correctness proof of |match|.
 \begin{code}
-  pf : ∀ r xs → wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)
+  pf : ∀ r xs -> wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)
   pf Empty xs P (preH , postH) = λ ()
   pf Epsilon Nil P (preH , postH) = postH _ Epsilon
   pf Epsilon (x :: xs) P (preH , postH) = λ ()
   pf (Singleton x) Nil P (preH , postH) = λ ()
   pf (Singleton x) (c :: Nil) P (preH , postH) with x ≟ c
   pf (Singleton x) (c :: Nil) P (preH , postH) | yes refl = postH _ Singleton
-  pf (Singleton x) (c :: Nil) P (preH , postH) | no ¬p = λ {(ms , Singleton) → ¬p refl}
+  pf (Singleton x) (c :: Nil) P (preH , postH) | no ¬p = λ {(ms , Singleton) -> ¬p refl}
   pf (Singleton x) (_ :: _ :: _) P (preH , postH) = λ ()
   pf (l · r) xs P ((preL , preR) , postH) =
     wpBind (const ⊤) (allSplits xs) _ (allSplitsCorrect xs) P λ {(splitList ys zs refl) _ ->
@@ -246,12 +246,12 @@ Then, using |wpBind|, we incorporate this proof in the correctness proof of |mat
     wpBind (Match r zs) (match r zs) _ (pf r zs _ (preR , λ _ -> id)) P λ mrs rH ->
     postH (mls ++ mrs) (Concat lH rH)}
   pf (l ∣ r) xs P ((preL , preR) , postH) =
-    pf l xs _ (preL , λ o x → postH o (OrLeft x)) ,
+    pf l xs _ (preL , λ o x -> postH o (OrLeft x)) ,
     pf r xs _ (preR , λ o x -> postH o (OrRight x))
   pf (r *) xs P (() , postH)
   pf (Group r) xs P (preH , postH) =
     wpBind (Match r xs) (match r xs) _ (pf r xs _ (preH , λ _ -> id)) _
-    λ ms H → postH _ (Group H)
+    λ ms H -> postH _ (Group H)
 \end{code}
 
 \section{Combining nondeterminism and general recursion}
