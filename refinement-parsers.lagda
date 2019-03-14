@@ -83,13 +83,13 @@ we can use predicate transformers.
   wpFree alg (Pure x) P = P x
   wpFree alg (Step c k) P = alg c \x -> wpFree alg (k x) P
 
+  ptNondet : (c : CNondet) -> (RNondet c -> Set) -> Set
+  ptNondet (Fail a) P = ¬ a
+  ptNondet Split P = P True ∧ P False
+
   wpNondetAll : {a : Set} -> Free ENondet a ->
     (a -> Set) -> Set
   wpNondetAll S P = wpFree ptNondet S P
-    where
-    ptNondet : (c : CNondet) -> (RNondet c -> Set) -> Set
-    ptNondet (Fail a) P = ¬ a
-    ptNondet Split P = P True ∧ P False
 \end{code}
 
 We use pre- and postconditions to give a specification for a program.
@@ -117,11 +117,9 @@ so we define it in terms of the predicate transformer associated with the progra
 \section{Almost parsing regular languages}
 %if style == newcode
 \begin{code}
-module AlmostRegex where
-  open NoCombination
-  open import Data.Char
-  open import Data.Char.Unsafe using (_≟_)
-  String = List Char
+open import Data.Char
+open import Data.Char.Unsafe using (_≟_)
+String = List Char
 \end{code}
 %endif
 To see how we can use the |Free| monad for writing and verifying a parser,
@@ -131,14 +129,14 @@ we will look at parsing a given regular language.
 A regular language can defined using a regular expression,
 which we will represent as an element of the |Regex| datatype:
 \begin{code}
-  data Regex : Set where
-    Empty : Regex
-    Epsilon : Regex
-    Singleton : Char -> Regex
-    _·_ : Regex -> Regex -> Regex
-    _∣_ : Regex -> Regex -> Regex
-    _* : Regex -> Regex
-    Group : Regex -> Regex
+data Regex : Set where
+  Empty : Regex
+  Epsilon : Regex
+  Singleton : Char -> Regex
+  _·_ : Regex -> Regex -> Regex
+  _∣_ : Regex -> Regex -> Regex
+  _* : Regex -> Regex
+  Group : Regex -> Regex
 \end{code}
 Here, |Empty| is an expression for empty language (which matches no strings at all),
 while |Epsilon| is an expression for the language of the empty string (which matches exactly one string: |""|.
@@ -155,15 +153,15 @@ If the |Regex| and |String| do not match, there should be no output,
 otherwise the output may be any correct contents of the groups.
 We give the relation using the following inductive definition:
 \begin{code}
-  data Match : Regex -> String -> List String -> Set where
-    Epsilon : Match Epsilon Nil Nil
-    Singleton : {x : Char} -> Match (Singleton x) (x :: Nil) Nil
-    Concat : {l r : Regex} {ys zs : String} {mls mrs : List String} -> Match l ys mls -> Match r zs mrs -> Match (l · r) (ys ++ zs) (mls ++ mrs)
-    OrLeft : {l r : Regex} {xs : String} {ms : List String} -> Match l xs ms -> Match (l ∣ r) xs ms
-    OrRight : {l r : Regex} {xs : String} {ms : List String} -> Match r xs ms -> Match (l ∣ r) xs ms
-    StarNil : {r : Regex} -> Match (r *) Nil Nil
-    StarConcat : {r : Regex} {xs : String} {ms : List String} -> Match (r · (r *)) xs ms -> Match (r *) xs ms
-    Group : {r : Regex} {xs : String} {ms : List String} -> Match r xs ms -> Match (Group r) xs (xs :: ms)
+data Match : Regex -> String -> List String -> Set where
+  Epsilon : Match Epsilon Nil Nil
+  Singleton : {x : Char} -> Match (Singleton x) (x :: Nil) Nil
+  Concat : {l r : Regex} {ys zs : String} {mls mrs : List String} -> Match l ys mls -> Match r zs mrs -> Match (l · r) (ys ++ zs) (mls ++ mrs)
+  OrLeft : {l r : Regex} {xs : String} {ms : List String} -> Match l xs ms -> Match (l ∣ r) xs ms
+  OrRight : {l r : Regex} {xs : String} {ms : List String} -> Match r xs ms -> Match (l ∣ r) xs ms
+  StarNil : {r : Regex} -> Match (r *) Nil Nil
+  StarConcat : {r : Regex} {xs : String} {ms : List String} -> Match (r · (r *)) xs ms -> Match (r *) xs ms
+  Group : {r : Regex} {xs : String} {ms : List String} -> Match r xs ms -> Match (Group r) xs (xs :: ms)
 \end{code}
 Note that there is no constructor for |Match Empty xs ms| for any |xs| or |ms|,
 which we interpret as that there is no way to match the |Empty| language with a string |xs|.
@@ -184,6 +182,12 @@ we match |l| with |xs| giving a left over string |ys|, then match |r| with |ys|.
 We can do without changing the return values of the matcher,
 by nondeterministically splitting the string |xs| into |ys ++ zs|.
 That is what we do in a helper function |allSplits|:
+%if style == newcode
+\begin{code}
+module AlmostRegex where
+  open NoCombination
+\end{code}
+%endif
 \begin{code}
   record SplitList {a : Set} (xs : List a) : Set where
     constructor splitList
@@ -304,37 +308,105 @@ Apart from having to introduce |wpBind|, the proof essentially follows automatic
 \end{code}
 
 \section{Combining nondeterminism and general recursion}
-In order to give a regex parser that also supports the Kleene star,
-we add another effect: general recursion.
+The matcher we have defined in the previous section is unfinished,
+since it is not able to handle regular expressions that incorporate the Kleene star.
+The fundamental issue is that the Kleene star allows for arbitrarily many distinct matchings in certain cases.
+For example, matching |Epsilon *| with the string |Nil| will allow for repeating the |Epsilon| arbitrarily often, since |Epsilon · (Epsilon *)| is equivalent to both |Epsilon| and |Epsilon *|.
+Thus, we cannot fix |match| by improving Agda's termination checker.
 
-Here is the corresponding predicate transformer:
+What we will do instead is to deal with the recursion as an effect.
+A recursively defined (dependent) function of type |(i : I) -> O i|
+can instead be given as an element of the type |(i : I) -> Free (ERec I O) (O i)|,
+where |ERec I O| is the effect of \emph{general recursion}~\cite{McBride-totally-free}:
 \begin{code}
-wpRec : {!!}
-wpRec = {!!}
+ERec : (I : Set) (O : I -> Set) -> Effect
+ERec I O = eff I O
 \end{code}
 
-The original |Free| monad is modified to support a list of effects instead of a single one,
-which corresponds to taking the coproduct of the functors that |Free| is a free monad over.
+We are not yet done now that we have defined the missing effect,
+since replacing the effect |ENondet| with |ERec (Pair Regex String) (List String)| does not allow for nondeterminism anymore,
+so while the Kleene star might work, the other parts of |match| do not work anymore.
+We need a way to combine the two effects.
+
+We can combine two effects in a straightforward way: given |eff C₁ R₁| and |eff C₂ R₂|,
+we can define a new effect by taking the disjoint union of the commands and responses,
+resulting in |eff (Either C₁ C₂) [ R₁ , R₂ ]|,
+where |[ R₁ , R₂ ]| is the unique map given by applying |R₁| to values in |C₁| and |R₂| to |C₂|.
+If we want to support more effects, we can repeat this process of disjoint unions,
+but this quickly becomes somewhat cumbersome.
+For example, the disjount union construction is associative,
+but we would need to supply a proof of this whenever the associations of our types do not match.
+
+Instead of building a new effect type, we modify the |Free| monad to take a list of effects instead of a single effect.
+The |Pure| constructor remains as it is,
+while the |Step| constructor takes an index into the list of effects and the command and continuation for the effect with this index.
 \begin{code}
 module Combinations where
   data Free (es : List Effect) (a : Set) : Set where
     Pure : a -> Free es a
     Step : {e : Effect} (i : e ∈ es) (c : Effect.C e) (k : Effect.R e c -> Free es a) -> Free es a
 \end{code}
+By using a list of effects instead of allowing arbitrary disjoint unions,
+we have effectively chosen a canonical association order of these unions.
+Since the disjoint union is also commutative, it would be cleaner to have the collection of effects be unordered as well,
+but there does not seem to be a data type built into Agda that allows for unordered collections.
 
-Now we need give new definitions of |wp|, |wpNondet| and |wpRec|.
+Since we want the effects to behave compositionally,
+the semantics of the combination of effects should be similarly found in a list of predicate transformers.
+The type |List ((c : C) -> (R c -> Set) -> Set)| is not sufficient,
+since we need to ensure the types match up.
+Using a dependent type we can define a list of predicate transformers for a list of effects:
 \begin{code}
-  wp : {a b : Set} -> (a -> Free Nil b) -> (a -> b -> Set) -> (a -> Set)
-  wp = {!!}
-  wpNondet : forall {a b es} -> (i : ENondet ∈ es) -> (a -> Free es b) -> (a -> Free (delete es i) b -> Set) -> (a -> Set)
-  wpNondet = {!!}
-\end{code} -- or make the smart constructors take |ENondet ∈ es| and the predicate transformers take |Free (ENondet :: es) b| to |Free es b|?
+  data PTs : List Effect -> Set where
+    Nil : PTs Nil
+    _::_ : ∀ {C R es} -> ((c : C) -> (R c -> Set) -> Set) -> PTs es -> PTs (eff C R :: es)
+\end{code}
+
+Given a such a list of predicate transformers,
+defining the semantics of an effectful program is a straightforward generalization of |wpFree|.
+The |Pure| case is identical, and in the |Step| case we find the predicate transformer at the corresponding index to the effect index |i : e ∈ es| using the |lookupPT| helper function.
+\begin{code}
+  lookupPT : ∀ {C R es} (pts : PTs es) (i : eff C R ∈ es) -> (c : C) -> (R c -> Set) -> Set
+  lookupPT (pt :: pts) ∈Head = pt
+  lookupPT (pt :: pts) (∈Tail i) = lookupPT pts i
+\end{code}
+This results in the following definition of |wpFree| for combinations of effects.
+\begin{code}
+  wpFree : forall {a es} (pts : PTs es) ->
+    Free es a -> (a -> Set) -> Set
+  wpFree pts (Pure x) P = P x
+  wpFree pts (Step i c k) P = lookupPT pts i c (λ x -> wpFree pts (k x) P)
+\end{code}
+
+In the new definition of |match|, we want to combine the effects of nondeterminism and general recursion.
+To verify this definition, we need to give its semantics,
+for which we need to give the list of predicate transformers to |wpFree|.
+For nondeterminism we alread have the predicate transformer |ptNondet|.
+However, it is not as easy to give a predicate transformer for general recursion,
+since the intended semantics of a recursive call depend
+on the function that is being called, i.e. the function that is being defined.
+
+However, if we have a specification of a function of type |(i : I) -> O i|,
+for example in terms of a relation of type |(i : I) -> O i -> Set|,
+we can define a predicate transformer:
+\begin{code}
+  ptRec : ∀ {I : Set} {O : I -> Set} -> ((i : I) -> O i -> Set) -> (i : I) -> (O i -> Set) -> Set
+  ptRec R i P = ∀ o -> R i o -> P o
+\end{code}
+For example, the |Match| relation serves as a specification for the |match| function.
+If we use |ptRec R| as a predicate transformer to check that a recursive function satisfies the relation |R|,
+then we are proving \emph{partial correctness}, since we assume each recursive call terminates according to the relation |R|.
 
 \section{Recursively parsing every regular expression}
 
 Now we are able to handle the Kleene star:
 
-We can also show correctness in the case of |*|.
+\begin{code}
+  match : Pair Regex String -> Free (ERec (Pair Regex String) (λ _ -> List String) :: ENondet :: Nil) (List String)
+  match = {!!}
+\end{code}
+
+We can also show (partial) correctness in the case of |*|.
 
 However, in this proof we do not show termination of the parsing, so it is just a proof of partial correctness.
 To prove termination, it is easier to write a new parser that refines the previous implementation.
@@ -389,11 +461,4 @@ If each right hand side has a nonterminal, then the parser terminates in this we
 \section{Left factorisation?}
 In that proof, do we need to left factorise the language? In that case, can we say something about that operation?
 \end{document}
-
-%%% Local Variables:
-%%% mode: latex
-%%% TeX-master: t
-%%% TeX-command-default: "lagda2pdf"
-%%% End: 
-
 
