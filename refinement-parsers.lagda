@@ -115,15 +115,21 @@ so we define it in terms of the predicate transformer associated with the progra
 \end{code}
 
 \section{Almost parsing regular languages}
-As an example of using nondeterminism,
-we can define the type of regular expressions |Regex| in Agda,
-and a relation |Match| on |Regex| and |String|.
+%if style == newcode
 \begin{code}
+module AlmostRegex where
+  open NoCombination
   open import Data.Char
   open import Data.Char.Unsafe using (_≟_)
   String = List Char
 \end{code}
-
+%endif
+To see how we can use the |Free| monad for writing and verifying a parser,
+and more specifically how we use the |ENondet| effect for writing
+and the |wpNondetAll| semantics for verifying a parser,
+we will look at parsing a given regular language.
+A regular language can defined using a regular expression,
+which we will represent as an element of the |Regex| datatype:
 \begin{code}
   data Regex : Set where
     Empty : Regex
@@ -133,7 +139,22 @@ and a relation |Match| on |Regex| and |String|.
     _∣_ : Regex -> Regex -> Regex
     _* : Regex -> Regex
     Group : Regex -> Regex
+\end{code}
+Here, |Empty| is an expression for empty language (which matches no strings at all),
+while |Epsilon| is an expression for the language of the empty string (which matches exactly one string: |""|.
+We also allow for grouping in our regular expressions.
+The intended semantics of the |Group| operation are similar to those of the |(...)| construction in Perl-compatible regular expressions,
+i.e. apart from deciding whether a string is matched by a language, the matcher should also report the contents of these groups.
+We will represent these contents of the groups as a list, where the first group is the head of the list, the second group is the next element of the list, and so on.
+\todo{a good source?}
 
+In Agda, we can represent the semantics of the |Regex| type
+by giving a relation between a |Regex| and a |String| on the one hand (the input of the matcher),
+and a list of strings on the other hand (the output of the matcher).
+If the |Regex| and |String| do not match, there should be no output,
+otherwise the output may be any correct contents of the groups.
+We give the relation using the following inductive definition:
+\begin{code}
   data Match : Regex -> String -> List String -> Set where
     Epsilon : Match Epsilon Nil Nil
     Singleton : {x : Char} -> Match (Singleton x) (x :: Nil) Nil
@@ -144,9 +165,25 @@ and a relation |Match| on |Regex| and |String|.
     StarConcat : {r : Regex} {xs : String} {ms : List String} -> Match (r · (r *)) xs ms -> Match (r *) xs ms
     Group : {r : Regex} {xs : String} {ms : List String} -> Match r xs ms -> Match (Group r) xs (xs :: ms)
 \end{code}
+Note that there is no constructor for |Match Empty xs ms| for any |xs| or |ms|,
+which we interpret as that there is no way to match the |Empty| language with a string |xs|.
+Similarly, the only constructor for |Match Epsilon xs ms| is where |xs| is the empty string |Nil|.
 
-Using nondeterminism as an effect, we create a function that takes a |Regex| and |String| and gives all potential matchings.
-First, we introduce a utility function that nondeterministically splits a string into two parts.
+Since the definition of |Match| allows for multiple ways that a given |Regex| and |String| may match,
+such as in the trivial case where the |Regex| is of the form |r ∣ r|,
+and it also has cases where there is no way to match a |Regex| and a |String|,
+such as where the |Regex| is |Empty|,
+we can immediately predict some parts of the implementation.
+Whenever we encounter an expression of the form |l ∣ r|, we |split| nondeterministically between either |l| or |s|.
+Similarly, whenever we encounter the |Empty| expression, we immediately |fail|.
+
+The case of concatenation is not as immediately obvious.
+One way that we can deal with it is to instead write a matcher that returns the unmatched portion of the string,
+and when we have to match a regular expression of the form |l · r| with a string |xs|,
+we match |l| with |xs| giving a left over string |ys|, then match |r| with |ys|.
+We can do without changing the return values of the matcher,
+by nondeterministically splitting the string |xs| into |ys ++ zs|.
+That is what we do in a helper function |allSplits|:
 \begin{code}
   record SplitList {a : Set} (xs : List a) : Set where
     constructor splitList
@@ -162,8 +199,8 @@ First, we introduce a utility function that nondeterministically splits a string
     (allSplits xs >>= λ spl -> Pure (splitList (x :: SplitList.lhs spl) (SplitList.rhs spl) (cong (Cons x) (SplitList.cat spl))))
 \end{code}
 
-In our first version of the |match| function, we do case analysis on the regular expression,
-and inspect the structure of the string.
+Armed with this helper function, we can write our first nondeterministic regular expression matcher,
+that does a case distinction on the expression and then checks that the string has the correct format.
 \begin{code}
   match : (r : Regex) (xs : String) -> Free ENondet (List String)
   match Empty xs = fail {Sigma (List String) (Match Empty Nil)} >>= λ ()
@@ -181,14 +218,19 @@ and inspect the structure of the string.
   match (l ∣ r) xs = split (match l xs) (match r xs)
   match (Group r) xs = match r xs >>= λ ms -> Pure (xs :: ms)
 \end{code}
-  Unfortunately, we get stuck in the case of |_*|, since it is not immediately obvious that this terminates.
-  We just fail in this case.
+Unfortunately, we get stuck in the case of |_*|.
+We could do a similar construction to |l · r|,
+where we split the string into two parts and match the first part with |r| and the second part with |r *|,
+but this runs afoul of Agda's termination checker.
+Since there is no easy way to handle this case for now,
+we just |fail| when we encounter a regex |r *|.
 \begin{code}
   match (r *) xs = fail
 \end{code}
 
-Still, we can prove that this program works, as long as the regex does not contain |_*|.
-Thus, the precondition states that the regex contains no Kleene star,
+Still, we can prove that this matcher works, as long as the regex does not contain |_*|.
+In other words, we can prove that the |match| function refines a specification
+where the precondition states that the regex contains no Kleene star,
 and the postcondition states that the matching is correct,
 with respect to the type |Match|.
 \begin{code}
@@ -206,11 +248,14 @@ with respect to the type |Match|.
   post : (r : Regex) (xs : String) -> List String -> Set
   post = Match
 \end{code}
+
 If we now want to give a correctness proof with respect to these pre- and postconditions,
 we run into an issue in cases where the definition makes use of the |_>>=_| operator.
 The |wpFree|-based semantics completely unfolds the left hand side,
 before it can talk about the right hand side.
-We solve this by using the following lemma to replace the left hand side with its specification.
+Whenever our matcher makes use of recursion on the left hand side of a |_>>=_| (as we do in |allSplits| and in the cases of |l · r| and |l ∣ r|),
+we cannot make progress in our proof without reducing this left hand side to a recursion-less expression.
+We solve this by using the following lemma to replace the left hand side with a postcondition.
 \begin{code}
   wpBind : ∀ {a b} post (mx : Free ENondet a) (f : a -> Free ENondet b) ->
     wpNondetAll mx post ->
@@ -220,8 +265,11 @@ We solve this by using the following lemma to replace the left hand side with it
   wpBind post (Step (Fail x) k) f mxH P postH = mxH
   wpBind post (Step Split k) f (mxHt , mxHf) P postH = wpBind post (k True) f mxHt P postH , wpBind post (k False) f mxHf P postH
 \end{code}
+This lemma is a specialization of the left compositionality property,
+which states that we can refine on the left hand side of a bind.\todo{cite?}
 
-The correctness proof essentially does the same induction on the |Regex| as the definition of |match| does.
+The correctness proof closely matches the structure of |match| (and by extension |allSplits|).
+It uses the same recursion on |Regex| as in the definition of |match|.
 Since we make use of |allSplits| in the definition, we first give its correctness proof.
 \begin{code}
   allSplitsCorrect : ∀ (xs : String) ->
@@ -229,7 +277,8 @@ Since we make use of |allSplits| in the definition, we first give its correctnes
   allSplitsCorrect Nil = tt
   allSplitsCorrect (x :: xs) = tt , wpBind (const ⊤) (allSplits xs) _ (allSplitsCorrect xs) _ λ _ _ -> tt
 \end{code}
-Then, using |wpBind|, we incorporate this proof in the correctness proof of |match|.
+Then, using |wpBind|, we incorporate this correctness proof in the correctness proof of |match|.
+Apart from having to introduce |wpBind|, the proof essentially follows automatically from the definitions.
 \begin{code}
   pf : ∀ r xs -> wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)
   pf Empty xs P (preH , postH) = λ ()
