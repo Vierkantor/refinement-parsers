@@ -59,6 +59,11 @@ not : Bool -> Bool
 not True = False
 not False = True
 
+_&&_ : Bool -> Bool -> Bool
+True && True = True
+False && _ = False
+_ && False = False
+
 _||_ : Bool -> Bool -> Bool
 True || _ = True
 _ || True = True

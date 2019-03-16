@@ -40,10 +40,10 @@ record Effect : Set where
     R : C -> Set
 
 data CNondet : Set where
-  Fail : Set -> CNondet
+  Fail : CNondet
   Split : CNondet
 RNondet : CNondet -> Set
-RNondet (Fail a) = a
+RNondet Fail = ⊥
 RNondet Split = Bool
 
 ENondet = eff CNondet RNondet
@@ -70,7 +70,7 @@ This gives a monad, with the bind operator defined as follows:
 The easiest way to use effects is with smart constructors:
 \begin{code}
   fail : ∀ {a} -> Free ENondet a
-  fail {a} = Step (Fail a) Pure
+  fail {a} = Step Fail magic
   split : ∀ {a} -> Free ENondet a -> Free ENondet a -> Free ENondet a
   split S₁ S₂ = Step Split λ b -> if b then S₁ else S₂
 \end{code}
@@ -84,34 +84,40 @@ we can use predicate transformers.
   wpFree alg (Step c k) P = alg c \x -> wpFree alg (k x) P
 
   ptNondet : (c : CNondet) -> (RNondet c -> Set) -> Set
-  ptNondet (Fail a) P = ¬ a
+  ptNondet Fail P = ⊤
   ptNondet Split P = P True ∧ P False
 
   wpNondetAll : {a : Set} -> Free ENondet a ->
     (a -> Set) -> Set
   wpNondetAll S P = wpFree ptNondet S P
 \end{code}
+%if style == newcode
+\begin{code}
+ptNondet = NoCombination.ptNondet
+\end{code}
+%endif
 
 We use pre- and postconditions to give a specification for a program.
 If the precondition holds on the input,
 the program needs to ensure the postcondition holds on the output.
 \begin{code}
-  record Spec (a : Set) : Set where
-    constructor [[_,_]]
-    field
-      pre : Set
-      post : a -> Set
 
-  wpSpec : {a : Set} -> Spec a -> (a -> Set) -> Set
-  wpSpec [[ pre , post ]] P = pre ∧ (∀ o -> post o -> P o)
+record Spec (a : Set) : Set where
+  constructor [[_,_]]
+  field
+    pre : Set
+    post : a -> Set
+
+wpSpec : {a : Set} -> Spec a -> (a -> Set) -> Set
+wpSpec [[ pre , post ]] P = pre ∧ (∀ o -> post o -> P o)
 \end{code}
 
 The refinement relation expresses when one program is ``better'' than another.
 We need to take into account the semantics we want to impose on the program,
 so we define it in terms of the predicate transformer associated with the program.
 \begin{code}
-  _⊑_ : {a : Set} (pt1 pt2 : (a -> Set) -> Set) -> Set
-  pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
+_⊑_ : {a : Set} (pt1 pt2 : (a -> Set) -> Set) -> Set
+pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
 \end{code}
 
 \section{Almost parsing regular languages}
@@ -182,6 +188,14 @@ we match |l| with |xs| giving a left over string |ys|, then match |r| with |ys|.
 We can do without changing the return values of the matcher,
 by nondeterministically splitting the string |xs| into |ys ++ zs|.
 That is what we do in a helper function |allSplits|:
+\begin{code}
+record SplitList {a : Set} (xs : List a) : Set where
+  constructor splitList
+  field
+    lhs : List a
+    rhs : List a
+    cat : xs == (lhs ++ rhs)
+\end{code}
 %if style == newcode
 \begin{code}
 module AlmostRegex where
@@ -189,13 +203,6 @@ module AlmostRegex where
 \end{code}
 %endif
 \begin{code}
-  record SplitList {a : Set} (xs : List a) : Set where
-    constructor splitList
-    field
-      lhs : List a
-      rhs : List a
-      cat : xs == (lhs ++ rhs)
-
   allSplits : ∀ {a} -> (xs : List a) -> Free ENondet (SplitList xs)
   allSplits Nil = Pure (splitList Nil Nil refl)
   allSplits (x :: xs) = split
@@ -266,7 +273,7 @@ We solve this by using the following lemma to replace the left hand side with a 
     ∀ P -> (∀ x -> post x -> wpNondetAll (f x) P) ->
     wpNondetAll (mx >>= f) P
   wpBind post (Pure x) f mxH P postH = postH x mxH
-  wpBind post (Step (Fail x) k) f mxH P postH = mxH
+  wpBind post (Step Fail k) f mxH P postH = mxH
   wpBind post (Step Split k) f (mxHt , mxHf) P postH = wpBind post (k True) f mxHt P postH , wpBind post (k False) f mxHf P postH
 \end{code}
 This lemma is a specialization of the left compositionality property,
@@ -285,14 +292,14 @@ Then, using |wpBind|, we incorporate this correctness proof in the correctness p
 Apart from having to introduce |wpBind|, the proof essentially follows automatically from the definitions.
 \begin{code}
   pf : ∀ r xs -> wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)
-  pf Empty xs P (preH , postH) = λ ()
+  pf Empty xs P (preH , postH) = tt
   pf Epsilon Nil P (preH , postH) = postH _ Epsilon
-  pf Epsilon (x :: xs) P (preH , postH) = λ ()
-  pf (Singleton x) Nil P (preH , postH) = λ ()
+  pf Epsilon (x :: xs) P (preH , postH) = tt
+  pf (Singleton x) Nil P (preH , postH) = tt
   pf (Singleton x) (c :: Nil) P (preH , postH) with x ≟ c
   pf (Singleton x) (c :: Nil) P (preH , postH) | yes refl = postH _ Singleton
-  pf (Singleton x) (c :: Nil) P (preH , postH) | no ¬p = λ {(ms , Singleton) -> ¬p refl}
-  pf (Singleton x) (_ :: _ :: _) P (preH , postH) = λ ()
+  pf (Singleton x) (c :: Nil) P (preH , postH) | no ¬p = tt
+  pf (Singleton x) (_ :: _ :: _) P (preH , postH) = tt
   pf (l · r) xs P ((preL , preR) , postH) =
     wpBind (const ⊤) (allSplits xs) _ (allSplitsCorrect xs) P λ {(splitList ys zs refl) _ ->
     wpBind (Match l ys) (match l ys) _ (pf l ys _ (preL , λ _ -> id)) P λ mls lH ->
@@ -351,6 +358,28 @@ we have effectively chosen a canonical association order of these unions.
 Since the disjoint union is also commutative, it would be cleaner to have the collection of effects be unordered as well,
 but there does not seem to be a data type built into Agda that allows for unordered collections.
 
+To make use of the new definition of |Free|, we need to translate the previous constructions.
+We can define the monadic bind |_>>=_| in the same way as in the previous definition of |Free|.
+%if style == newcode
+\begin{code}
+  _>>=_ : ∀ {a b es} -> Free es a -> (a -> Free es b) -> Free es b
+  Pure x >>= f = f x
+  Step i c k >>= f = Step i c λ x -> k x >>= f
+\end{code}
+%endif
+We also to make a small modification to the smart constructors for nondeterminism,
+since they now need to keep track of their position within a list of effects.
+\todo{Use Agda's instance arguments for |iND| and |iRec| instead of explicit arguments? Might make it a bit more straightforward to write code with it, but apparently the solver is not always smart enough to use them...}
+\begin{code}
+  fail : ∀ {a es} (i : ENondet ∈ es) -> Free es a
+  fail {a} iND = Step iND Fail magic
+  split : ∀ {a es} (i : ENondet ∈ es) -> Free es a -> Free es a -> Free es a
+  split {a} iND S₁ S₂ = Step iND Split λ b -> if b then S₁ else S₂
+
+  call : ∀ {I O es} -> ERec I O ∈ es -> (i : I) -> Free es (O i)
+  call iRec i = Step iRec i Pure
+\end{code}
+
 Since we want the effects to behave compositionally,
 the semantics of the combination of effects should be similarly found in a list of predicate transformers.
 The type |List ((c : C) -> (R c -> Set) -> Set)| is not sufficient,
@@ -402,17 +431,131 @@ then we are proving \emph{partial correctness}, since we assume each recursive c
 Now we are able to handle the Kleene star:
 
 \begin{code}
-  match : Pair Regex String -> Free (ERec (Pair Regex String) (λ _ -> List String) :: ENondet :: Nil) (List String)
-  match = {!!}
+  allSplits : ∀ {a es} -> (ENondet ∈ es) -> (xs : List a) -> Free es (SplitList xs)
+  allSplits i Nil = Pure (splitList Nil Nil refl)
+  allSplits i (x :: xs) = split i
+    (Pure (splitList Nil (x :: xs) refl))
+    (allSplits i xs >>= λ spl -> Pure (splitList (x :: SplitList.lhs spl) (SplitList.rhs spl) (cong (Cons x) (SplitList.cat spl))))
+
+  match : ∀ {es} -> (ERec (Pair Regex String) (λ _ -> List String) ∈ es) -> (ENondet ∈ es) ->
+    Pair Regex String -> Free es (List String)
+  match iRec iND (Empty , xs) = fail iND
+  match iRec iND (Epsilon , Nil) = Pure Nil
+  match iRec iND (Epsilon , xs@(_ :: _)) = fail iND
+  match iRec iND ((Singleton c) , Nil) = fail iND
+  match iRec iND ((Singleton c) , (x :: Nil)) with c ≟ x
+  match iRec iND ((Singleton c) , (.c :: Nil)) | yes refl = Pure Nil
+  match iRec iND ((Singleton c) , (x :: Nil)) | no ¬p = fail iND
+  match iRec iND ((Singleton c) , xs@(_ :: _ :: _)) = fail iND
+  match iRec iND ((l · r) , xs) = allSplits iND xs >>=
+    λ spl -> call iRec (l , SplitList.lhs spl) >>=
+    λ ml -> call iRec (r , SplitList.rhs spl) >>=
+    λ mr -> Pure (ml ++ mr)
+  match iRec iND ((l ∣ r) , xs) = split iND (call iRec (l , xs)) (call iRec (r , xs))
+  match iRec iND (Group r , xs) = call iRec (r , xs) >>= λ ms -> Pure (xs :: ms)
+  match iRec iND ((r *) , Nil) = Pure Nil
+  match iRec iND ((r *) , xs@(_ :: _)) = call iRec ((r · (r *)) , xs)
 \end{code}
 
-We can also show (partial) correctness in the case of |*|.
+The effects we need to use for running |match| are a combination of nondeterminism and general recursion.
+As discussed, we first need to give the specification for |match| before we can verify a program that makes use of |match|.
+\begin{code}
+  matchSpec : Pair Regex String -> List String -> Set
+  matchSpec (r , xs) ms = Match r xs ms
+
+  wpMatch : ∀ {a} -> Free (ERec (Pair Regex String) (λ _ -> List String) :: ENondet :: Nil) a -> (a -> Set) -> Set
+  wpMatch = wpFree (ptRec matchSpec :: ptNondet :: Nil)
+\end{code}
+
+In a few places, we use a recursive |call| instead of actual recursion.
+One advantage to this choice is that in proving correctness,
+we can use the specification of |match| directly,
+without having to use |wpBind| in between.
+Unfortunately, we still need |wpBind| to deal with the call to |allSplits|.
+We give a proof specialized for |wpMatch|,
+although it generalizes to all |pts| passed to |wpFree|.
+\begin{code}
+  wpBind : ∀ {a b} post (mx : Free _ a) (f : a -> Free _ b) ->
+    wpMatch mx post ->
+    ∀ P -> (∀ x -> post x -> wpMatch (f x) P) ->
+    wpMatch (mx >>= f) P
+  wpBind post (Pure x) f mxH P postH = postH x mxH
+  wpBind post (Step ∈Head (r , xs) k) f mxH P postH = λ o H → wpBind post (k o) f (mxH o H) P postH
+  wpBind post (Step (∈Tail ∈Head) Fail k) f mxH P postH = mxH
+  wpBind post (Step (∈Tail ∈Head) Split k) f (fst , snd) P postH =
+    wpBind post (k True) f fst P postH , wpBind post (k False) f snd P postH
+\end{code}
+
+We can reuse exactly the same proof to show |allSplits| is correct,
+since we use the same semantics for the effects in |allSplits|.
+%if style == newcode
+\begin{code}
+  allSplitsCorrect : ∀ (xs : String) ->
+    wpMatch (allSplits (∈Tail ∈Head) xs) (λ _ -> ⊤)
+  allSplitsCorrect Nil = tt
+  allSplitsCorrect (x :: xs) = tt , wpBind (const ⊤) (allSplits _ xs) _ (allSplitsCorrect xs) _ λ _ _ -> tt
+\end{code}
+%endif
+On the other hand, the correctness proof for |match| needs a bit of tweaking to deal with the difference in the recursive steps.
+\begin{code}
+  pf : ∀ r,xs -> wpSpec [[ ⊤ , matchSpec r,xs ]] ⊑ wpMatch (match ∈Head (∈Tail ∈Head) r,xs)
+  pf (Empty , xs) P (preH , postH) = tt
+  pf (Epsilon , Nil) P (preH , postH) = postH _ Epsilon
+  pf (Epsilon , (_ :: _)) P (preH , postH) = tt
+  pf (Singleton c , Nil) P (preH , postH) = tt
+  pf (Singleton c , (x :: Nil)) P (preH , postH) with c ≟ x
+  pf (Singleton c , (.c :: Nil)) P (preH , postH) | yes refl = postH _ Singleton
+  pf (Singleton c , (x :: Nil)) P (preH , postH) | no ¬p = tt
+  pf (Singleton c , (_ :: _ :: _)) P (preH , postH) = tt
+  pf ((l · r) , xs) P (preH , postH) = wpBind _ (allSplits (∈Tail ∈Head) xs) _ (allSplitsCorrect xs) P
+    λ {(splitList lhs rhs refl) _ mls lH mrs rH → postH _ (Concat lH rH)}
+  pf ((l ∣ r) , xs) P (preH , postH) = (λ o H → postH _ (OrLeft H)) , (λ o H → postH _ (OrRight H))
+  pf (Group r , xs) P (preH , postH) = λ o H → postH (xs :: o) (Group H)
+\end{code}
+Now we are able to prove correctness of |match| on a Kleene star.
+\begin{code}
+  pf ((r *) , Nil) P (preH , postH) = postH _ StarNil
+  pf ((r *) , (x :: xs)) P (preH , postH) = λ o H → postH _ (StarConcat H)
+\end{code}
 
 However, in this proof we do not show termination of the parsing, so it is just a proof of partial correctness.
 To prove termination, it is easier to write a new parser that refines the previous implementation.
 
 \section{Termination, using derivatives}
-We can use the Brzozowski derivative to advance the regular expression a single character, giving the function |dmatch|.
+We can use the Brzozowski derivative to advance the regular expression a single character.\cite{Brzozowski}
+\begin{code}
+  ε? : (r : Regex) -> Bool
+  ε? Empty = False
+  ε? Epsilon = True
+  ε? (Singleton x) = False
+  ε? (l · r) = ε? l && ε? r
+  ε? (l ∣ r) = ε? l || ε? r
+  ε? (r *) = True
+  ε? (Group r) = ε? r
+
+  d_/d_ : Regex -> Char -> Regex
+  d Empty /d c = Empty
+  d Epsilon /d c = Empty
+  d Singleton x /d c with c ≟ x
+  ... | yes p = Epsilon
+  ... | no ¬p = Empty
+  d l · r /d c = if ε? l then ((d l /d c) · r) ∣ (d r /d c) else (d l /d c) · r
+  d l ∣ r /d c = (d l /d c) ∣ (d r /d c)
+  d r * /d c = (d r /d c) · (r *)
+  d Group r /d c = d r /d c
+\end{code}
+
+When we apply this to matching, we get the function |dmatch|.
+\begin{code}
+  dmatch : ∀ {es} -> (ERec (Pair Regex String) (λ _ -> List String) ∈ es) -> (ENondet ∈ es) ->
+    Pair Regex String -> Free es (List String)
+  dmatch iRec iND (r , Nil) = if ε? r then Pure Nil else (fail iND)
+  dmatch iRec iND (r , (x :: xs)) = call iRec ((d r /d x) , xs) >>= Pure ∘ group r (x :: xs)
+    where
+    group : Regex -> String -> List String -> List String
+    group (Group _) xs ms = xs :: ms
+    group _ xs ms = ms
+\end{code}
 
 Since |dmatch| always consumes a character before going in recursion, we can easily prove it calls itself on smaller arguments.
 This means that for all input values, after substituting itself in the definition enough times, we get rid of all (general) recursion.
