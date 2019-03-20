@@ -142,13 +142,13 @@ data Regex : Set where
   _·_ : Regex -> Regex -> Regex
   _∣_ : Regex -> Regex -> Regex
   _* : Regex -> Regex
-  Group : Regex -> Regex
+  Mark : Nat -> Regex -> Regex
 \end{code}
 Here, |Empty| is an expression for empty language (which matches no strings at all),
 while |Epsilon| is an expression for the language of the empty string (which matches exactly one string: |""|.
-We also allow for grouping in our regular expressions.
-The intended semantics of the |Group| operation are similar to those of the |(...)| construction in Perl-compatible regular expressions,
-i.e. apart from deciding whether a string is matched by a language, the matcher should also report the contents of these groups.
+We also allow for output in our regular expressions.
+The intended semantics of the |Mark| operation are to indicate which branch was taken during matching.
+i.e. apart from deciding whether a string is matched by a language, the matcher should also report which markings occurred.
 We will represent these contents of the groups as a list, where the first group is the head of the list, the second group is the next element of the list, and so on.
 \todo{a good source?}
 
@@ -159,15 +159,15 @@ If the |Regex| and |String| do not match, there should be no output,
 otherwise the output may be any correct contents of the groups.
 We give the relation using the following inductive definition:
 \begin{code}
-data Match : Regex -> String -> List String -> Set where
+data Match : Regex -> String -> List Nat -> Set where
   Epsilon : Match Epsilon Nil Nil
   Singleton : {x : Char} -> Match (Singleton x) (x :: Nil) Nil
-  Concat : {l r : Regex} {ys zs : String} {mls mrs : List String} -> Match l ys mls -> Match r zs mrs -> Match (l · r) (ys ++ zs) (mls ++ mrs)
-  OrLeft : {l r : Regex} {xs : String} {ms : List String} -> Match l xs ms -> Match (l ∣ r) xs ms
-  OrRight : {l r : Regex} {xs : String} {ms : List String} -> Match r xs ms -> Match (l ∣ r) xs ms
+  Concat : {l r : Regex} {ys zs : String} {mls mrs : List Nat} -> Match l ys mls -> Match r zs mrs -> Match (l · r) (ys ++ zs) (mls ++ mrs)
+  OrLeft : {l r : Regex} {xs : String} {ms : List Nat} -> Match l xs ms -> Match (l ∣ r) xs ms
+  OrRight : {l r : Regex} {xs : String} {ms : List Nat} -> Match r xs ms -> Match (l ∣ r) xs ms
   StarNil : {r : Regex} -> Match (r *) Nil Nil
-  StarConcat : {r : Regex} {xs : String} {ms : List String} -> Match (r · (r *)) xs ms -> Match (r *) xs ms
-  Group : {r : Regex} {xs : String} {ms : List String} -> Match r xs ms -> Match (Group r) xs (xs :: ms)
+  StarConcat : {r : Regex} {xs : String} {ms : List Nat} -> Match (r · (r *)) xs ms -> Match (r *) xs ms
+  Mark : {r : Regex} {xs : String} {m : Nat} {ms : List Nat} -> Match r xs ms -> Match (Mark m r) xs (m :: ms)
 \end{code}
 Note that there is no constructor for |Match Empty xs ms| for any |xs| or |ms|,
 which we interpret as that there is no way to match the |Empty| language with a string |xs|.
@@ -213,21 +213,21 @@ module AlmostRegex where
 Armed with this helper function, we can write our first nondeterministic regular expression matcher,
 that does a case distinction on the expression and then checks that the string has the correct format.
 \begin{code}
-  match : (r : Regex) (xs : String) -> Free ENondet (List String)
-  match Empty xs = fail {Sigma (List String) (Match Empty Nil)} >>= λ ()
+  match : (r : Regex) (xs : String) -> Free ENondet (List Nat)
+  match Empty xs = fail
   match Epsilon Nil = Pure Nil
-  match Epsilon xs@(_ :: _) = fail {Sigma (List String) (Match Empty Nil)} >>= λ ()
-  match (Singleton c) Nil = fail {Sigma (List String) (Match (Singleton c) Nil)} >>= λ ()
+  match Epsilon xs@(_ :: _) = fail
+  match (Singleton c) Nil = fail
   match (Singleton c) (x :: Nil) with c ≟ x
   match (Singleton c) (.c :: Nil) | yes refl = Pure Nil
-  match (Singleton c) (x :: Nil) | no ¬p = fail {Sigma (List String) (Match (Singleton c) (x :: Nil))} >>= λ {(ms , Singleton) -> magic (¬p refl)}
-  match (Singleton c) xs@(_ :: _ :: _) = fail {Sigma (List String) (Match (Singleton c) xs)} >>= λ ()
+  match (Singleton c) (x :: Nil) | no ¬p = fail
+  match (Singleton c) xs@(_ :: _ :: _) = fail
   match (l · r) xs = allSplits xs >>=
     λ spl -> match l (SplitList.lhs spl) >>=
     λ ml -> match r (SplitList.rhs spl) >>=
     λ mr -> Pure (ml ++ mr)
   match (l ∣ r) xs = split (match l xs) (match r xs)
-  match (Group r) xs = match r xs >>= λ ms -> Pure (xs :: ms)
+  match (Mark n r) xs = match r xs >>= λ ms -> Pure (n :: ms)
 \end{code}
 Unfortunately, we get stuck in the case of |_*|.
 We could do a similar construction to |l · r|,
@@ -252,11 +252,11 @@ with respect to the type |Match|.
   hasNo* (l · r) = hasNo* l ∧ hasNo* r
   hasNo* (l ∣ r) = hasNo* l ∧ hasNo* r
   hasNo* (r *) = ⊥
-  hasNo* (Group r) = hasNo* r
+  hasNo* (Mark n r) = hasNo* r
 
   pre : (r : Regex) (xs : String) -> Set
   pre r xs = hasNo* r
-  post : (r : Regex) (xs : String) -> List String -> Set
+  post : (r : Regex) (xs : String) -> List Nat -> Set
   post = Match
 \end{code}
 
@@ -309,9 +309,9 @@ Apart from having to introduce |wpBind|, the proof essentially follows automatic
     pf l xs _ (preL , λ o x -> postH o (OrLeft x)) ,
     pf r xs _ (preR , λ o x -> postH o (OrRight x))
   pf (r *) xs P (() , postH)
-  pf (Group r) xs P (preH , postH) =
+  pf (Mark n r) xs P (preH , postH) =
     wpBind (Match r xs) (match r xs) _ (pf r xs _ (preH , λ _ -> id)) _
-    λ ms H -> postH _ (Group H)
+    λ ms H -> postH _ (Mark H)
 \end{code}
 
 \section{Combining nondeterminism and general recursion}
@@ -437,8 +437,8 @@ Now we are able to handle the Kleene star:
     (Pure (splitList Nil (x :: xs) refl))
     (allSplits i xs >>= λ spl -> Pure (splitList (x :: SplitList.lhs spl) (SplitList.rhs spl) (cong (Cons x) (SplitList.cat spl))))
 
-  match : ∀ {es} -> (ERec (Pair Regex String) (λ _ -> List String) ∈ es) -> (ENondet ∈ es) ->
-    Pair Regex String -> Free es (List String)
+  match : ∀ {es} -> (ERec (Pair Regex String) (λ _ -> List Nat) ∈ es) -> (ENondet ∈ es) ->
+    Pair Regex String -> Free es (List Nat)
   match iRec iND (Empty , xs) = fail iND
   match iRec iND (Epsilon , Nil) = Pure Nil
   match iRec iND (Epsilon , xs@(_ :: _)) = fail iND
@@ -452,7 +452,7 @@ Now we are able to handle the Kleene star:
     λ ml -> call iRec (r , SplitList.rhs spl) >>=
     λ mr -> Pure (ml ++ mr)
   match iRec iND ((l ∣ r) , xs) = split iND (call iRec (l , xs)) (call iRec (r , xs))
-  match iRec iND (Group r , xs) = call iRec (r , xs) >>= λ ms -> Pure (xs :: ms)
+  match iRec iND (Mark n r , xs) = call iRec (r , xs) >>= λ ms -> Pure (n :: ms)
   match iRec iND ((r *) , Nil) = Pure Nil
   match iRec iND ((r *) , xs@(_ :: _)) = call iRec ((r · (r *)) , xs)
 \end{code}
@@ -460,10 +460,10 @@ Now we are able to handle the Kleene star:
 The effects we need to use for running |match| are a combination of nondeterminism and general recursion.
 As discussed, we first need to give the specification for |match| before we can verify a program that makes use of |match|.
 \begin{code}
-  matchSpec : Pair Regex String -> List String -> Set
+  matchSpec : Pair Regex String -> List Nat -> Set
   matchSpec (r , xs) ms = Match r xs ms
 
-  wpMatch : ∀ {a} -> Free (ERec (Pair Regex String) (λ _ -> List String) :: ENondet :: Nil) a -> (a -> Set) -> Set
+  wpMatch : ∀ {a} -> Free (ERec (Pair Regex String) (λ _ -> List Nat) :: ENondet :: Nil) a -> (a -> Set) -> Set
   wpMatch = wpFree (ptRec matchSpec :: ptNondet :: Nil)
 \end{code}
 
@@ -480,7 +480,7 @@ although it generalizes to all |pts| passed to |wpFree|.
     ∀ P -> (∀ x -> post x -> wpMatch (f x) P) ->
     wpMatch (mx >>= f) P
   wpBind post (Pure x) f mxH P postH = postH x mxH
-  wpBind post (Step ∈Head (r , xs) k) f mxH P postH = λ o H → wpBind post (k o) f (mxH o H) P postH
+  wpBind post (Step ∈Head (r , xs) k) f mxH P postH = λ o H -> wpBind post (k o) f (mxH o H) P postH
   wpBind post (Step (∈Tail ∈Head) Fail k) f mxH P postH = mxH
   wpBind post (Step (∈Tail ∈Head) Split k) f (fst , snd) P postH =
     wpBind post (k True) f fst P postH , wpBind post (k False) f snd P postH
@@ -508,14 +508,14 @@ On the other hand, the correctness proof for |match| needs a bit of tweaking to 
   pf (Singleton c , (x :: Nil)) P (preH , postH) | no ¬p = tt
   pf (Singleton c , (_ :: _ :: _)) P (preH , postH) = tt
   pf ((l · r) , xs) P (preH , postH) = wpBind _ (allSplits (∈Tail ∈Head) xs) _ (allSplitsCorrect xs) P
-    λ {(splitList lhs rhs refl) _ mls lH mrs rH → postH _ (Concat lH rH)}
-  pf ((l ∣ r) , xs) P (preH , postH) = (λ o H → postH _ (OrLeft H)) , (λ o H → postH _ (OrRight H))
-  pf (Group r , xs) P (preH , postH) = λ o H → postH (xs :: o) (Group H)
+    λ {(splitList lhs rhs refl) _ mls lH mrs rH -> postH _ (Concat lH rH)}
+  pf ((l ∣ r) , xs) P (preH , postH) = (λ o H -> postH _ (OrLeft H)) , (λ o H -> postH _ (OrRight H))
+  pf (Mark n r , xs) P (preH , postH) = λ o H -> postH (n :: o) (Mark H)
 \end{code}
 Now we are able to prove correctness of |match| on a Kleene star.
 \begin{code}
   pf ((r *) , Nil) P (preH , postH) = postH _ StarNil
-  pf ((r *) , (x :: xs)) P (preH , postH) = λ o H → postH _ (StarConcat H)
+  pf ((r *) , (x :: xs)) P (preH , postH) = λ o H -> postH _ (StarConcat H)
 \end{code}
 
 However, in this proof we do not show termination of the parsing, so it is just a proof of partial correctness.
@@ -524,14 +524,38 @@ To prove termination, it is easier to write a new parser that refines the previo
 \section{Termination, using derivatives}
 We can use the Brzozowski derivative to advance the regular expression a single character.\cite{Brzozowski}
 \begin{code}
-  ε? : (r : Regex) -> Bool
-  ε? Empty = False
-  ε? Epsilon = True
-  ε? (Singleton x) = False
-  ε? (l · r) = ε? l && ε? r
-  ε? (l ∣ r) = ε? l || ε? r
-  ε? (r *) = True
-  ε? (Group r) = ε? r
+  nilConcat : ∀ {l r xs ms} -> Match (l · r) xs ms -> xs == Nil -> Pair (Sigma (List Nat) (Match l Nil)) (Sigma (List Nat) (Match r Nil))
+  nilConcat (Concat {ys = Nil} {Nil} ml mr) cat = (_ , ml) , (_ , mr)
+  nilConcat (Concat {ys = Nil} {x :: zs} ml mr) ()
+  nilConcat (Concat {ys = x :: ys} {zs} ml mr) ()
+
+  ε? : (r : Regex) -> Dec (Sigma (List Nat) (Match r Nil))
+  ε? Empty = no λ ()
+  ε? Epsilon = yes (Nil , Epsilon)
+  ε? (Singleton x) = no λ ()
+  ε? (l · r) with ε? l | ε? r
+  ε? (l · r) | yes (ml , pl) | yes (mr , pr) = yes ((ml ++ mr) , (Concat pl pr))
+  ε? (l · r) | yes pl | no ¬pr = no λ {(m , x) -> ¬pr (Pair.snd (nilConcat x refl))}
+  ε? (l · r) | no ¬pl | yes pr = no λ {(m , x) -> ¬pl (Pair.fst (nilConcat x refl))}
+  ε? (l · r) | no ¬pl | no ¬pr = no λ {(m , x) -> ¬pl (Pair.fst (nilConcat x refl))}
+  ε? (l ∣ r) with ε? l | ε? r
+  ε? (l ∣ r) | yes (ml , pl) | yes pr = yes (ml , OrLeft pl)
+  ε? (l ∣ r) | yes (ml , pl) | no ¬pr = yes (ml , OrLeft pl)
+  ε? (l ∣ r) | no ¬pl | yes (mr , pr) = yes (mr , OrRight pr)
+  ε? (l ∣ r) | no ¬pl | no ¬pr = no λ {(ml , OrLeft pl) -> ¬pl (ml , pl) ; (mr , OrRight pr) -> ¬pr (mr , pr)}
+  ε? (r *) = yes (Nil , StarNil)
+  ε? (Mark n r) with ε? r
+  ... | yes (m , p) = yes (_ , Mark p)
+  ... | no ¬p = no λ { (m , Mark x) → ¬p (_ , x) }
+
+  ε-ize : Regex -> Regex
+  ε-ize Empty = Empty
+  ε-ize Epsilon = Epsilon
+  ε-ize (Singleton _) = Empty
+  ε-ize (l · r) = ε-ize l · ε-ize r
+  ε-ize (l ∣ r) = ε-ize l ∣ ε-ize r
+  ε-ize (r *) = Epsilon
+  ε-ize (Mark n r) = Mark n (ε-ize r)
 
   d_/d_ : Regex -> Char -> Regex
   d Empty /d c = Empty
@@ -539,29 +563,127 @@ We can use the Brzozowski derivative to advance the regular expression a single 
   d Singleton x /d c with c ≟ x
   ... | yes p = Epsilon
   ... | no ¬p = Empty
-  d l · r /d c = if ε? l then ((d l /d c) · r) ∣ (d r /d c) else (d l /d c) · r
+  d l · r /d c with ε? l
+  ... | yes p = ((d l /d c) · r) ∣ (ε-ize l · (d r /d c))
+  ... | no ¬p = (d l /d c) · r
   d l ∣ r /d c = (d l /d c) ∣ (d r /d c)
   d r * /d c = (d r /d c) · (r *)
-  d Group r /d c = d r /d c
+  d Mark n r /d c = Mark n (d r /d c)
 \end{code}
 
 When we apply this to matching, we get the function |dmatch|.
 \begin{code}
-  dmatch : ∀ {es} -> (ERec (Pair Regex String) (λ _ -> List String) ∈ es) -> (ENondet ∈ es) ->
-    Pair Regex String -> Free es (List String)
-  dmatch iRec iND (r , Nil) = if ε? r then Pure Nil else (fail iND)
-  dmatch iRec iND (r , (x :: xs)) = call iRec ((d r /d x) , xs) >>= Pure ∘ group r (x :: xs)
-    where
-    group : Regex -> String -> List String -> List String
-    group (Group _) xs ms = xs :: ms
-    group _ xs ms = ms
+  dmatch : ∀ {es} -> (ERec (Pair Regex String) (λ _ -> List Nat) ∈ es) -> (ENondet ∈ es) ->
+    Pair Regex String -> Free es (List Nat)
+  dmatch iRec iND (r , Nil) with ε? r
+  ... | yes (ms , _) = Pure ms
+  ... | no ¬p = fail iND
+  dmatch iRec iND (r , (x :: xs)) = call iRec ((d r /d x) , xs)
 \end{code}
 
 Since |dmatch| always consumes a character before going in recursion, we can easily prove it calls itself on smaller arguments.
 This means that for all input values, after substituting itself in the definition enough times, we get rid of all (general) recursion.
 In other words: |dmatch| terminates.
+\begin{code}
+  terminates-in : ∀ {I O a es} (pts : PTs es) (f : (i : I) -> Free (ERec I O :: es) (O i)) ->
+    Free (ERec I O :: es) a -> Nat -> Set
+  terminates-in pts f S Zero = ⊥
+  terminates-in pts f (Pure x) (Succ n) = ⊤
+  terminates-in pts f (Step ∈Head c k) (Succ n) = terminates-in pts f (f c) n ∧ ∀ x -> terminates-in pts f (k x) (Succ n)
+  terminates-in pts f (Step (∈Tail i) c k) (Succ n) = lookupPT pts i c λ x -> terminates-in pts f (k x) (Succ n)
+  termination : ∀ {I O es} (pts : PTs es) (f : (i : I) -> Free (ERec I O :: es) (O i)) -> Set
+  termination pts f = ∀ i -> Sigma Nat λ n -> terminates-in pts f (f i) n
 
-Moreover, |dmatch| is a refinement of |match|, which means it is also correct:
+  dmatch-terminates : termination (ptNondet :: Nil) (dmatch ∈Head (∈Tail ∈Head))
+  dmatch-terminates (r , xs) = Succ (length xs) , lemma r xs
+    where
+    lemma : ∀ r xs -> terminates-in (ptNondet :: Nil) (dmatch ∈Head (∈Tail ∈Head)) (dmatch ∈Head (∈Tail ∈Head) (r , xs)) (Succ (length xs))
+    lemma r Nil with ε? r
+    lemma r Nil | yes p = tt
+    lemma r Nil | no ¬p = tt
+    lemma r@Empty (x :: xs) = lemma (d r /d x) xs , λ _ -> tt
+    lemma r@Epsilon (x :: xs) = lemma (d r /d x) xs , λ _ -> tt
+    lemma r@(Singleton _) (x :: xs) = lemma (d r /d x) xs , λ _ -> tt
+    lemma r@(_ · _) (x :: xs) = lemma (d r /d x) xs , λ _ -> tt
+    lemma r@(_ ∣ _) (x :: xs) = lemma (d r /d x) xs , λ _ -> tt
+    lemma r@(_ *) (x :: xs) = lemma (d r /d x) xs , λ _ -> tt
+    lemma r@(Mark n _) (x :: xs) = lemma (d r /d x) xs , (λ _ -> tt)
+\end{code}
+
+Moreover, |dmatch| is a refinement of |match|, which means it is also correct.
+First we show that |d r /d x| matches strings |xs| such that |r| matches |x :: xs|.
+\begin{code}
+  ε-izeGivesEpsilon : ∀ r xs ms -> Match (ε-ize r) xs ms -> xs == Nil
+  ε-izeGivesEpsilon Empty xs ms ()
+  ε-izeGivesEpsilon Epsilon .Nil .Nil Epsilon = refl
+  ε-izeGivesEpsilon (Singleton x) xs ms ()
+  ε-izeGivesEpsilon (l · r) xs ms (Concat Hl Hr) with ε-izeGivesEpsilon _ _ _ Hl | ε-izeGivesEpsilon _ _ _ Hr
+  ... | refl | refl = refl
+  ε-izeGivesEpsilon (l ∣ r) xs ms (OrLeft H) = ε-izeGivesEpsilon _ _ _ H
+  ε-izeGivesEpsilon (l ∣ r) xs ms (OrRight H) = ε-izeGivesEpsilon _ _ _ H
+  ε-izeGivesEpsilon (r *) .Nil .Nil Epsilon = refl
+  ε-izeGivesEpsilon (Mark x r) xs .(x :: _) (Mark H) = ε-izeGivesEpsilon _ _ _ H
+
+  ε-izeCorrect : ∀ r xs ms -> Match (ε-ize r) xs ms -> Match r Nil ms
+  ε-izeCorrect Empty xs ms ()
+  ε-izeCorrect Epsilon .Nil .Nil Epsilon = Epsilon
+  ε-izeCorrect (Singleton x) xs ms ()
+  ε-izeCorrect (l · r) xs ms (Concat Hl Hr) = Concat (ε-izeCorrect _ _ _ Hl) (ε-izeCorrect _ _ _ Hr)
+  ε-izeCorrect (l ∣ r) xs ms (OrLeft H) = OrLeft (ε-izeCorrect _ _ _ H)
+  ε-izeCorrect (l ∣ r) xs ms (OrRight H) = OrRight (ε-izeCorrect _ _ _ H)
+  ε-izeCorrect (r *) .Nil .Nil Epsilon = StarNil
+  ε-izeCorrect (Mark n r) xs .(n :: _) (Mark H) = Mark (ε-izeCorrect _ _ _ H)
+
+  derivativeCorrect : ∀ r x xs ms -> Match (d r /d x) xs ms -> Match r (x :: xs) ms
+  derivativeCorrect Empty x xs ms ()
+  derivativeCorrect Epsilon x xs ms ()
+  derivativeCorrect (Singleton c) x xs ms m with x ≟ c
+  derivativeCorrect (Singleton c) .c .Nil .Nil Epsilon | yes refl = Singleton
+  derivativeCorrect (Singleton c) x xs ms () | no ¬p
+  derivativeCorrect (l · r) x xs ms m with ε? l
+  derivativeCorrect (l · r) x xs ms (OrLeft (Concat ml mr)) | yes (mlr , plr) = Concat (derivativeCorrect _ _ _ _ ml) mr
+  derivativeCorrect (l · r) x xs ms (OrRight (Concat ml mr)) | yes (mlr , plr) with ε-izeGivesEpsilon _ _ _ ml
+  derivativeCorrect (l · r) x xs ms (OrRight (Concat ml mr)) | yes (mlr , plr) | refl = Concat (ε-izeCorrect _ _ _ ml) (derivativeCorrect _ _ _ _ mr)
+  derivativeCorrect (l · r) x xs ms (Concat ml mr) | no ¬p = Concat (derivativeCorrect _ _ _ _ ml) mr
+  derivativeCorrect (l ∣ r) x xs ms (OrLeft m) = OrLeft (derivativeCorrect _ _ _ _ m)
+  derivativeCorrect (l ∣ r) x xs ms (OrRight m) = OrRight (derivativeCorrect _ _ _ _ m)
+  derivativeCorrect (r *) x xs ms (Concat ml mr) = StarConcat (Concat (derivativeCorrect _ _ _ _ ml) mr)
+  derivativeCorrect (Mark n r) x xs .(n :: _) (Mark m) = Mark (derivativeCorrect _ _ _ _ m)
+\end{code}
+\begin{code}
+  refinement : ∀ r xs -> wpMatch (match ∈Head (∈Tail ∈Head) (r , xs)) ⊑ wpMatch (dmatch ∈Head (∈Tail ∈Head) (r , xs))
+  refinement Empty Nil P H = tt
+  refinement Empty (x :: xs) P H = λ o ()
+  refinement Epsilon Nil P H = H
+  refinement Epsilon (x :: xs) P H = λ o ()
+  refinement (Singleton c) Nil P H = H
+  refinement (Singleton c) (x :: xs) P H with x ≟ c
+  refinement (Singleton c) (.c :: Nil) P H | yes refl with c ≟ c
+  refinement (Singleton c) (.c :: Nil) P H | yes refl | yes refl = λ {o Epsilon -> H}
+  refinement (Singleton c) (.c :: Nil) P H | yes refl | no ¬p = magic (¬p refl)
+  refinement (Singleton c) (.c :: _ :: _) P H | yes refl = λ o ()
+  refinement (Singleton c) (_ :: _) P H | no ¬p = λ o ()
+  refinement (l · r) Nil P H with ε? l | ε? r
+  refinement (l · r) Nil P H | yes (ml , pl) | yes (mr , pr) = H _ pl _ pr
+  refinement (l · r) Nil P H | yes (ml , pl) | no ¬pr = tt
+  refinement (l · r) Nil P H | no ¬pl | yes (mr , pr) = tt
+  refinement (l · r) Nil P H | no ¬pl | no ¬pr = tt
+  refinement (l · r) (x :: xs) P (fst , snd) with ε? l
+  refinement (l · r) (x :: xs) P (fst , snd) | yes (ms , H) = λ { o (OrLeft m) → {!snd!} ; o (OrRight (Concat ml mr)) -> {!fst _ !} }
+  refinement (l · r) (x :: xs) P (fst , snd) | no ¬p = λ { o (Concat ml mr) → {!fst!} }
+  refinement (l ∣ r) Nil P (fst , snd) with ε? l | ε? r
+  refinement (l ∣ r) Nil P (fst , snd) | yes (ml , pl) | yes (mr , pr) = fst ml pl
+  refinement (l ∣ r) Nil P (fst , snd) | yes (ml , pl) | no ¬pr = fst ml pl
+  refinement (l ∣ r) Nil P (fst , snd) | no ¬pl | yes (mr , pr) = snd mr pr
+  refinement (l ∣ r) Nil P (fst , snd) | no ¬pl | no ¬pr = tt
+  refinement (l ∣ r) (x :: xs) P (fst , snd) = λ { o (OrLeft H) → fst o (derivativeCorrect _ _ _ _ H) ; o (OrRight H) → snd o (derivativeCorrect _ _ _ _ H)}
+  refinement (r *) Nil P H = H
+  refinement (r *) (x :: xs) P H = λ {ms (Concat ml mr) → H _ (Concat (derivativeCorrect _ _ _ _ ml) mr)}
+  refinement (Mark n r) Nil P H with ε? r
+  ... | yes (fst , snd) = H _ snd
+  ... | no ¬p = tt
+  refinement (Mark n r) (x :: xs) P H = λ {o (Mark m) → H _ (derivativeCorrect r _ _ _ m)}
+\end{code}
 
 \section{Different viewpoints of grammars}
 In classical logic, a language is no more than a set of strings, or a predicate over strings: |String -> Set|.
