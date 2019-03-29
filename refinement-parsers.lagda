@@ -691,10 +691,51 @@ Constructively, such predicates (even when decidable) are not very useful: the l
 To make them more amenable to reasoning, we impose structure on languages, for example by giving their definition as a regular expression.
 For more complicated grammars than regular expressions, we will use the abstract representation of grammars by Kasper Brink.
 
+%if style == newcode
+\begin{code}
+open import Relation.Binary
+\end{code}
+%endif
+\begin{code}
+record GrammarSymbols : Set where
+  field
+    Terminal : Set
+    Nonterminal : Set
+    ⟦_⟧ : Nonterminal -> Set
+    _≟t_ : Decidable {A = Terminal} _==_
+    _≟n_ : Decidable {A = Nonterminal} _==_
+module Grammar (gs : GrammarSymbols) where
+  open GrammarSymbols gs
+  Symbol = Either Terminal Nonterminal
+  Symbols = List Symbol
+  ⟦_∥_⟧ : Symbols -> Nonterminal -> Set
+  ⟦ Nil ∥ A ⟧ = ⟦ A ⟧
+  ⟦ Inl x :: xs ∥ A ⟧ = ⟦ xs ∥ A ⟧
+  ⟦ Inr B :: xs ∥ A ⟧ = ⟦ B ⟧ -> ⟦ xs ∥ A ⟧
+  record Production : Set where
+    constructor prod
+    field
+      lhs : Nonterminal
+      rhs : Symbols
+      sem : ⟦ rhs ∥ lhs ⟧
+  Productions = List Production
+\end{code}
+
 Alternatively, we can use the Brzozowski derivative to ensure we can step though the symbols of the language,
 so we get the coinductive trie of Andeas Abel:
+\begin{code}
+  open import Size
+  record Trie (i : Size) (a : Set) : Set where
+    coinductive
+    field
+      ε : List a
+      d_/d_ : (j : Size< i) -> Terminal -> Trie j a
+\end{code}
 
 Our last viewpoint of grammar is a much more computational one: the list-of-succesful-parses type.
+\begin{code}
+  Parser = ∀ {a} -> List Terminal -> List a
+\end{code}
 
 To unify these different viewpoints, we will apply algebraic effects.
 
