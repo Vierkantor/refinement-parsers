@@ -650,6 +650,16 @@ First we show that |d r /d x| matches strings |xs| such that |r| matches |x :: x
   derivativeCorrect (r *) x xs ms (Concat ml mr) = StarConcat (Concat (derivativeCorrect _ _ _ _ ml) mr)
   derivativeCorrect (Mark n r) x xs .(n :: _) (Mark m) = Mark (derivativeCorrect _ _ _ _ m)
 \end{code}
+
+\begin{code}
+  consequence : ∀ {a b} (S : Free _ a) (f : a -> Free _ b) P ->
+    wpMatch (S >>= f) P -> wpMatch S (λ x -> wpMatch (f x) P)
+  consequence (Pure x) f P H = H
+  consequence (Step ∈Head c k) f P H o x = consequence (k o) f P (H o x)
+  consequence (Step (∈Tail ∈Head) Fail k) f P .tt = tt
+  consequence (Step (∈Tail ∈Head) Split k) f P (fst , snd) = consequence (k True) f P fst , consequence (k False) f P snd
+\end{code}
+
 \begin{code}
   refinement : ∀ r xs -> wpMatch (match ∈Head (∈Tail ∈Head) (r , xs)) ⊑ wpMatch (dmatch ∈Head (∈Tail ∈Head) (r , xs))
   refinement Empty Nil P H = tt
@@ -668,9 +678,11 @@ First we show that |d r /d x| matches strings |xs| such that |r| matches |x :: x
   refinement (l · r) Nil P H | yes (ml , pl) | no ¬pr = tt
   refinement (l · r) Nil P H | no ¬pl | yes (mr , pr) = tt
   refinement (l · r) Nil P H | no ¬pl | no ¬pr = tt
-  refinement (l · r) (x :: xs) P (fst , snd) with ε? l
-  refinement (l · r) (x :: xs) P (fst , snd) | yes (ms , H) = λ { o (OrLeft m) → {!snd!} ; o (OrRight (Concat ml mr)) -> {!fst _ !} }
-  refinement (l · r) (x :: xs) P (fst , snd) | no ¬p = λ { o (Concat ml mr) → {!fst!} }
+  refinement (l · r) (x :: xs) P (fst , snd) o H with ε? l
+  refinement (l · r) (x :: xs) P (fst , snd) o (OrLeft (Concat {ys = ys} {zs} Hl Hr)) | yes p = {!consequence (allSplits (∈Tail ∈Head) (x :: xs)) _!}
+  refinement (l · r) (x :: xs) P (fst , snd) o (OrRight (Concat Hl Hr)) | yes p with ε-izeGivesEpsilon _ _ _ Hl
+  ... | refl = fst _ (ε-izeCorrect _ _ _ Hl) _ (derivativeCorrect _ _ _ _ Hr)
+  refinement (l · r) (x :: xs) P (fst , snd) o (Concat Hl H2) | no ¬p = {!allSplitsCorrect!}
   refinement (l ∣ r) Nil P (fst , snd) with ε? l | ε? r
   refinement (l ∣ r) Nil P (fst , snd) | yes (ml , pl) | yes (mr , pr) = fst ml pl
   refinement (l ∣ r) Nil P (fst , snd) | yes (ml , pl) | no ¬pr = fst ml pl
