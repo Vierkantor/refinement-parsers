@@ -741,12 +741,27 @@ so we get the coinductive trie of Andeas Abel:
     coinductive
     field
       ε : List a
-      d_/d_ : (j : Size< i) -> Terminal -> Trie j a
+      d_/d_ : {j : Size< i} -> Terminal -> Trie j a
+  open Trie
+\end{code}
+The field |ε| represents the successful parses of the empty string,
+while |d_/d_| gives the subtries after parsing a single |terminal|.
+For example, we have the trie for an empty language,
+and we can take the union of two tries to get the union of two languages.
+\begin{code}
+  emptyTrie : ∀ {i a} -> Trie i a
+  ε emptyTrie = Nil
+  d emptyTrie /d x = emptyTrie
+
+  _∪ᵗ_ : ∀ {i a} -> Trie i a -> Trie i a -> Trie i a
+  ε (t ∪ᵗ t') = ε t ++ ε t'
+  d t ∪ᵗ t' /d x = (d t /d x) ∪ᵗ (d t' /d x)
 \end{code}
 
 Our last viewpoint of grammar is a much more computational one: the list-of-succesful-parses type.
 \begin{code}
-  Parser = ∀ {a} -> List Terminal -> List a
+  Parser : Set -> Set
+  Parser a = List Terminal -> List a
 \end{code}
 
 To unify these different viewpoints, we will apply algebraic effects.
@@ -757,11 +772,57 @@ algebraic effects allow us to introduce new effects,
 which saves us bookkeeping issues.
 The |EParser| effect has a single command, which consumes the next token from the input string, or fails if the string is empty.
 
+\begin{code}
+  data CParser : Set where
+    Parse : CParser
+  RParser : CParser -> Set
+  RParser Parse = Terminal
+  EParser = eff CParser RParser
+\end{code}
+
 An algebraic parser combines the effects of |ENondet| and |EParser|, which we will write in one predicate transformer:
+%if style == newcode
+\begin{code}
+  open Combinations
+\end{code}
+%endif
+\begin{code}
+  FreeParser = Free (ENondet :: EParser :: Nil)
+
+  wpParse : ∀ {a} -> FreeParser a -> (a -> List Terminal -> Set) -> List Terminal -> Set
+  wpParse (Pure x) P xs = P x xs
+  wpParse (Step ∈Head Fail k) P xs = ⊥
+  wpParse (Step ∈Head Split k) P xs = Pair (wpParse (k True) P xs) (wpParse (k False) P xs)
+  wpParse (Step (∈Tail ∈Head) Parse k) P Nil = ⊥
+  wpParse (Step (∈Tail ∈Head) Parse k) P (x :: xs) = wpParse (k x) P xs
+\end{code}
 
 This allows us to define the language of an algebraic parser: all strings such that the postcondition ``the unmatched string is empty'' is satisfied.
+\begin{code}
+  empty? : ∀ {a} -> List a -> Set
+  empty? Nil = ⊤
+  empty? (_ :: _) = ⊥
+
+  _∈[_] : ∀ {a} -> List Terminal -> FreeParser a -> Set
+  xs ∈[ S ] = wpParse S (λ _ -> empty?) xs
+\end{code}
 
 It is also possible to give handlers that convert algebraic parsers to a trie, or to a list-of-successes function:
+\begin{code}
+  toTrie : ∀ {a} -> FreeParser a -> Trie ∞ a
+  toTrie (Pure x) = record { ε = [ x ] ; d_/d_ = λ _ -> emptyTrie }
+  toTrie (Step ∈Head Fail k) = emptyTrie
+  toTrie (Step ∈Head Split k) = toTrie (k True) ∪ᵗ toTrie (k False)
+  toTrie (Step (∈Tail ∈Head) Parse k) = record { ε = Nil ; d_/d_ = λ x -> toTrie (k x) }
+
+  toParser : ∀ {a} -> FreeParser a -> Parser a
+  toParser (Pure x) Nil = [ x ]
+  toParser (Pure x) (_ :: _) = Nil
+  toParser (Step ∈Head Fail k) xs = Nil
+  toParser (Step ∈Head Split k) xs = toParser (k True) xs ++ toParser (k False) xs
+  toParser (Step (∈Tail ∈Head) Parse k) Nil = Nil
+  toParser (Step (∈Tail ∈Head) Parse k) (x :: xs) = toParser (k x) xs
+\end{code}
 
 \section{From abstract grammars to algebraic parsers}
 The parser for the dependent grammar is similar in approach to |match|,
