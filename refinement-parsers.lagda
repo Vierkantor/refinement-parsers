@@ -767,53 +767,34 @@ Our last viewpoint of grammar is a much more computational one: the list-of-succ
 To unify these different viewpoints, we will apply algebraic effects.
 
 \section{Parsing as effect}
+%if style == newcode
+\begin{code}
+  open Combinations
+\end{code}
+%endif
 While we can follow the traditional development of parsers from nondeterministic state,
 algebraic effects allow us to introduce new effects,
 which saves us bookkeeping issues.
 The |EParser| effect has a single command, which consumes the next token from the input string, or fails if the string is empty.
-
 \begin{code}
   data CParser : Set where
     Parse : CParser
   RParser : CParser -> Set
   RParser Parse = Terminal
   EParser = eff CParser RParser
+
+  parse : ∀ {es} -> EParser ∈ es -> Free es Terminal
+  parse iP = Step iP Parse Pure
 \end{code}
 
-An algebraic parser combines the effects of |ENondet| and |EParser|, which we will write in one predicate transformer:
-%if style == newcode
-\begin{code}
-  open Combinations
-\end{code}
-%endif
+Combining the effects of |EParse| and |ENondet| gives us an abstract representation of the |Parser| type,
+where combinators such as the nondeterministic choice |_<|>_| and sequencing are represented explicitly.
+We will show that these effects, together with general recursion,
+suffice to parse any abstract grammar.
+First of all, we can translate any abstract parser to a parser function,
+using suitable handlers for the effects:
 \begin{code}
   FreeParser = Free (ENondet :: EParser :: Nil)
-
-  wpParse : ∀ {a} -> FreeParser a -> (a -> List Terminal -> Set) -> List Terminal -> Set
-  wpParse (Pure x) P xs = P x xs
-  wpParse (Step ∈Head Fail k) P xs = ⊥
-  wpParse (Step ∈Head Split k) P xs = Pair (wpParse (k True) P xs) (wpParse (k False) P xs)
-  wpParse (Step (∈Tail ∈Head) Parse k) P Nil = ⊥
-  wpParse (Step (∈Tail ∈Head) Parse k) P (x :: xs) = wpParse (k x) P xs
-\end{code}
-
-This allows us to define the language of an algebraic parser: all strings such that the postcondition ``the unmatched string is empty'' is satisfied.
-\begin{code}
-  empty? : ∀ {a} -> List a -> Set
-  empty? Nil = ⊤
-  empty? (_ :: _) = ⊥
-
-  _∈[_] : ∀ {a} -> List Terminal -> FreeParser a -> Set
-  xs ∈[ S ] = wpParse S (λ _ -> empty?) xs
-\end{code}
-
-It is also possible to give handlers that convert algebraic parsers to a trie, or to a list-of-successes function:
-\begin{code}
-  toTrie : ∀ {a} -> FreeParser a -> Trie ∞ a
-  toTrie (Pure x) = record { ε = [ x ] ; d_/d_ = λ _ -> emptyTrie }
-  toTrie (Step ∈Head Fail k) = emptyTrie
-  toTrie (Step ∈Head Split k) = toTrie (k True) ∪ᵗ toTrie (k False)
-  toTrie (Step (∈Tail ∈Head) Parse k) = record { ε = Nil ; d_/d_ = λ x -> toTrie (k x) }
 
   toParser : ∀ {a} -> FreeParser a -> Parser a
   toParser (Pure x) Nil = [ x ]
@@ -823,13 +804,79 @@ It is also possible to give handlers that convert algebraic parsers to a trie, o
   toParser (Step (∈Tail ∈Head) Parse k) Nil = Nil
   toParser (Step (∈Tail ∈Head) Parse k) (x :: xs) = toParser (k x) xs
 \end{code}
+The trie corresponding to the language of an abstract parser is similarly easy to define:
+\begin{code}
+  toTrie : ∀ {a} -> FreeParser a -> Trie ∞ a
+  toTrie (Pure x) = record { ε = [ x ] ; d_/d_ = λ _ -> emptyTrie }
+  toTrie (Step ∈Head Fail k) = emptyTrie
+  toTrie (Step ∈Head Split k) = toTrie (k True) ∪ᵗ toTrie (k False)
+  toTrie (Step (∈Tail ∈Head) Parse k) = record { ε = Nil ; d_/d_ = λ x -> toTrie (k x) }
+\end{code}
 
-\section{From abstract grammars to algebraic parsers}
-The parser for the dependent grammar is similar in approach to |match|,
-but we modify the type to be recursive from (A : Nonterminal) to [[ A ]].
-Compare the |generateParser| function by Kasper Brink.
+If we prefer to look at the semantics of parsing as a proposition instead of a function,
+we can use predicate transformers.
+Since the |Parse| effect uses a state consisting of the string to be parsed,
+the predicates depend on this state.
+\begin{code}
+  wpParse : ∀ {a} -> FreeParser a -> (a -> List Terminal -> Set) -> List Terminal -> Set
+  wpParse (Pure x) P xs = P x xs
+  wpParse (Step ∈Head Fail k) P xs = ⊥
+  wpParse (Step ∈Head Split k) P xs = Pair (wpParse (k True) P xs) (wpParse (k False) P xs)
+  wpParse (Step (∈Tail ∈Head) Parse k) P Nil = ⊥
+  wpParse (Step (∈Tail ∈Head) Parse k) P (x :: xs) = wpParse (k x) P xs
+\end{code}
+
+This allows us to define the language of an abstract parser: all strings such that the postcondition ``the unmatched string is empty'' is satisfied.
+\begin{code}
+  empty? : ∀ {a} -> List a -> Set
+  empty? Nil = ⊤
+  empty? (_ :: _) = ⊥
+
+  _∈[_] : ∀ {a} -> List Terminal -> FreeParser a -> Set
+  xs ∈[ S ] = wpParse S (λ _ -> empty?) xs
+\end{code}
+
+\section{From abstract grammars to abstract parsers}
+This type of abstract parsers suffices to parse a language given by production rules,
+as we will show by generating an abstract parser from a list |Production| rules.
+The approach is equivalent to the |generateParser| function by Kasper Brink. % TODO:cite
+However, nondeterminism and parsing is not enough: we also need general recursion to deal with definitions such as $E \to E$.
+\begin{code}
+  fromProductions : Productions -> (A : Nonterminal) -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) ⟦ A ⟧
+  fromProductions prods = go
+    where
+    record ProductionRHS (A : Nonterminal) : Set where
+      constructor prodrhs
+      field
+        rhs : Symbols
+        sem : ⟦ rhs ∥ A ⟧
+
+    buildParser : {A : Nonterminal} -> (xs : Symbols) -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) ⟦ xs ∥ A ⟧ -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) ⟦ A ⟧
+    exact : ∀ {a} -> a -> Terminal -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) a
+    filterLHS : (A : Nonterminal) -> Productions -> List (ProductionRHS A)
+    fromProduction : {A : Nonterminal} -> ProductionRHS A -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) ⟦ A ⟧
+    go : (A : Nonterminal) -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) ⟦ A ⟧
+
+    filterLHS A Nil = Nil
+    filterLHS A (prod lhs rhs sem :: ps) with A ≟n lhs
+    ... | yes refl = prodrhs rhs sem :: filterLHS A ps
+    ... | no _ = filterLHS A ps
+
+    exact x t = parse (∈Tail (∈Tail ∈Head)) >>= λ t' -> if' t ≟t t' then (λ _ -> Pure x) else λ _ -> fail (∈Tail ∈Head)
+
+    buildParser Nil S = S
+    buildParser (Inl x :: xs) S = buildParser xs (S >>= λ o -> exact o x)
+    buildParser (Inr x :: xs) S = buildParser xs (S >>= λ f -> Step ∈Head x Pure >>= λ o -> Pure (f o))
+
+    fromProduction (prodrhs rhs sem) = buildParser rhs (Pure sem)
+
+    go A = foldr (λ p -> split (∈Tail ∈Head) (fromProduction p)) (fail (∈Tail ∈Head)) (filterLHS A prods)
+\end{code}
 
 Partial correctness is relatively simple to show as soon as we define the semantics of grammars.
+\begin{code}
+
+\end{code}
 
 Termination is somewhat more subtle: since we call the same nonterminal repeatedly,
 we cannot get rid of all recursion after enough substitutions of the definition.
