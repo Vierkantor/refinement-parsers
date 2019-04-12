@@ -82,42 +82,53 @@ we can use predicate transformers.
     {a : Set} -> Free (eff C R) a -> (a -> Set) -> Set
   wpFree alg (Pure x) P = P x
   wpFree alg (Step c k) P = alg c \x -> wpFree alg (k x) P
+\end{code}
 
+%if style == newcode
+\begin{code}
+module Nondet where
+\end{code}
+%endif
+\begin{code}
   ptNondet : (c : CNondet) -> (RNondet c -> Set) -> Set
   ptNondet Fail P = ⊤
   ptNondet Split P = P True ∧ P False
+\end{code}
 
+%if style == newcode
+\begin{code}
+module NoCombination2 where
+  open NoCombination
+  open Nondet
+\end{code}
+%endif
+\begin{code}
   wpNondetAll : {a : Set} -> Free ENondet a ->
     (a -> Set) -> Set
   wpNondetAll S P = wpFree ptNondet S P
 \end{code}
-%if style == newcode
-\begin{code}
-ptNondet = NoCombination.ptNondet
-\end{code}
-%endif
 
 We use pre- and postconditions to give a specification for a program.
 If the precondition holds on the input,
 the program needs to ensure the postcondition holds on the output.
 \begin{code}
+module Spec where
+  record Spec (a : Set) : Set where
+    constructor [[_,_]]
+    field
+      pre : Set
+      post : a -> Set
 
-record Spec (a : Set) : Set where
-  constructor [[_,_]]
-  field
-    pre : Set
-    post : a -> Set
-
-wpSpec : {a : Set} -> Spec a -> (a -> Set) -> Set
-wpSpec [[ pre , post ]] P = pre ∧ (∀ o -> post o -> P o)
+  wpSpec : {a : Set} -> Spec a -> (a -> Set) -> Set
+  wpSpec [[ pre , post ]] P = pre ∧ (∀ o -> post o -> P o)
 \end{code}
 
 The refinement relation expresses when one program is ``better'' than another.
 We need to take into account the semantics we want to impose on the program,
 so we define it in terms of the predicate transformer associated with the program.
 \begin{code}
-_⊑_ : {a : Set} (pt1 pt2 : (a -> Set) -> Set) -> Set
-pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
+  _⊑_ : {a : Set} (pt1 pt2 : (a -> Set) -> Set) -> Set
+  pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
 \end{code}
 
 \section{Almost parsing regular languages}
@@ -200,6 +211,9 @@ record SplitList {a : Set} (xs : List a) : Set where
 \begin{code}
 module AlmostRegex where
   open NoCombination
+  open NoCombination2
+  open Nondet
+  open Spec
 \end{code}
 %endif
 \begin{code}
@@ -347,8 +361,12 @@ but we would need to supply a proof of this whenever the associations of our typ
 Instead of building a new effect type, we modify the |Free| monad to take a list of effects instead of a single effect.
 The |Pure| constructor remains as it is,
 while the |Step| constructor takes an index into the list of effects and the command and continuation for the effect with this index.
+%if style == newcode
 \begin{code}
 module Combinations where
+\end{code}
+%endif
+\begin{code}
   data Free (es : List Effect) (a : Set) : Set where
     Pure : a -> Free es a
     Step : {e : Effect} (i : e ∈ es) (c : Effect.C e) (k : Effect.R e c -> Free es a) -> Free es a
@@ -385,6 +403,12 @@ the semantics of the combination of effects should be similarly found in a list 
 The type |List ((c : C) -> (R c -> Set) -> Set)| is not sufficient,
 since we need to ensure the types match up.
 Using a dependent type we can define a list of predicate transformers for a list of effects:
+\begin{code}
+module Stateless where
+  open Combinations
+  open Nondet
+  open Spec
+\end{code}
 \begin{code}
   data PTs : List Effect -> Set where
     Nil : PTs Nil
@@ -546,7 +570,7 @@ We can use the Brzozowski derivative to advance the regular expression a single 
   ε? (r *) = yes (Nil , StarNil)
   ε? (Mark n r) with ε? r
   ... | yes (m , p) = yes (_ , Mark p)
-  ... | no ¬p = no λ { (m , Mark x) → ¬p (_ , x) }
+  ... | no ¬p = no λ { (m , Mark x) -> ¬p (_ , x) }
 
   ε-ize : Regex -> Regex
   ε-ize Empty = Empty
@@ -688,13 +712,13 @@ First we show that |d r /d x| matches strings |xs| such that |r| matches |x :: x
   refinement (l ∣ r) Nil P (fst , snd) | yes (ml , pl) | no ¬pr = fst ml pl
   refinement (l ∣ r) Nil P (fst , snd) | no ¬pl | yes (mr , pr) = snd mr pr
   refinement (l ∣ r) Nil P (fst , snd) | no ¬pl | no ¬pr = tt
-  refinement (l ∣ r) (x :: xs) P (fst , snd) = λ { o (OrLeft H) → fst o (derivativeCorrect _ _ _ _ H) ; o (OrRight H) → snd o (derivativeCorrect _ _ _ _ H)}
+  refinement (l ∣ r) (x :: xs) P (fst , snd) = λ { o (OrLeft H) -> fst o (derivativeCorrect _ _ _ _ H) ; o (OrRight H) -> snd o (derivativeCorrect _ _ _ _ H)}
   refinement (r *) Nil P H = H
-  refinement (r *) (x :: xs) P H = λ {ms (Concat ml mr) → H _ (Concat (derivativeCorrect _ _ _ _ ml) mr)}
+  refinement (r *) (x :: xs) P H = λ {ms (Concat ml mr) -> H _ (Concat (derivativeCorrect _ _ _ _ ml) mr)}
   refinement (Mark n r) Nil P H with ε? r
   ... | yes (fst , snd) = H _ snd
   ... | no ¬p = tt
-  refinement (Mark n r) (x :: xs) P H = λ {o (Mark m) → H _ (derivativeCorrect r _ _ _ m)}
+  refinement (Mark n r) (x :: xs) P H = λ {o (Mark m) -> H _ (derivativeCorrect r _ _ _ m)}
 \end{code}
 
 \section{Different viewpoints of grammars}
@@ -753,9 +777,9 @@ and we can take the union of two tries to get the union of two languages.
   ε emptyTrie = Nil
   d emptyTrie /d x = emptyTrie
 
-  _∪ᵗ_ : ∀ {i a} -> Trie i a -> Trie i a -> Trie i a
-  ε (t ∪ᵗ t') = ε t ++ ε t'
-  d t ∪ᵗ t' /d x = (d t /d x) ∪ᵗ (d t' /d x)
+  _∪t_ : ∀ {i a} -> Trie i a -> Trie i a -> Trie i a
+  ε (t ∪t t') = ε t ++ ε t'
+  d t ∪t t' /d x = (d t /d x) ∪t (d t' /d x)
 \end{code}
 
 Our last viewpoint of grammar is a much more computational one: the list-of-succesful-parses type.
@@ -775,7 +799,9 @@ To unify these different viewpoints, we will apply algebraic effects.
 While we can follow the traditional development of parsers from nondeterministic state,
 algebraic effects allow us to introduce new effects,
 which saves us bookkeeping issues.
-The |EParser| effect has a single command, which consumes the next token from the input string, or fails if the string is empty.
+The |EParser| effect has one commands, which either takes the first character from the input string or fails on an empty string.
+In the semantics we will define that the parsing was succesful if the input string is be completely parsed,
+so we do not need an effect corresponding to the |eof| parser combinator.
 \begin{code}
   data CParser : Set where
     Parse : CParser
@@ -788,7 +814,7 @@ The |EParser| effect has a single command, which consumes the next token from th
 \end{code}
 
 Combining the effects of |EParse| and |ENondet| gives us an abstract representation of the |Parser| type,
-where combinators such as the nondeterministic choice |_<|>_| and sequencing are represented explicitly.
+where combinators such as nondeterministic choice and sequencing are represented explicitly.
 We will show that these effects, together with general recursion,
 suffice to parse any abstract grammar.
 First of all, we can translate any abstract parser to a parser function,
@@ -809,7 +835,7 @@ The trie corresponding to the language of an abstract parser is similarly easy t
   toTrie : ∀ {a} -> FreeParser a -> Trie ∞ a
   toTrie (Pure x) = record { ε = [ x ] ; d_/d_ = λ _ -> emptyTrie }
   toTrie (Step ∈Head Fail k) = emptyTrie
-  toTrie (Step ∈Head Split k) = toTrie (k True) ∪ᵗ toTrie (k False)
+  toTrie (Step ∈Head Split k) = toTrie (k True) ∪t toTrie (k False)
   toTrie (Step (∈Tail ∈Head) Parse k) = record { ε = Nil ; d_/d_ = λ x -> toTrie (k x) }
 \end{code}
 
@@ -817,13 +843,29 @@ If we prefer to look at the semantics of parsing as a proposition instead of a f
 we can use predicate transformers.
 Since the |Parse| effect uses a state consisting of the string to be parsed,
 the predicates depend on this state.
+We modify the definition of |wp| so each |Effect| can access its own state.
 \begin{code}
-  wpParse : ∀ {a} -> FreeParser a -> (a -> List Terminal -> Set) -> List Terminal -> Set
-  wpParse (Pure x) P xs = P x xs
-  wpParse (Step ∈Head Fail k) P xs = ⊥
-  wpParse (Step ∈Head Split k) P xs = Pair (wpParse (k True) P xs) (wpParse (k False) P xs)
-  wpParse (Step (∈Tail ∈Head) Parse k) P Nil = ⊥
-  wpParse (Step (∈Tail ∈Head) Parse k) P (x :: xs) = wpParse (k x) P xs
+  data StatePTs (s : Set) : List Effect -> Set where
+    Nil : StatePTs s Nil
+    _::_ : ∀ {C R es} -> ((c : C) -> (R c -> s -> Set) -> s -> Set) -> StatePTs s es -> StatePTs s (eff C R :: es)
+
+  lookupStatePT : ∀ {s C R es} (pts : StatePTs s es) (i : eff C R ∈ es) -> (c : C) -> (R c -> s -> Set) -> s -> Set
+  lookupStatePT (pt :: pts) ∈Head c P t = pt c P t
+  lookupStatePT (pt :: pts) (∈Tail i) c P t = lookupStatePT pts i c P t
+
+  wp : ∀ {s es a} -> (pts : StatePTs s es) -> Free es a -> (a -> s -> Set) -> s -> Set
+  wp pts (Pure x) P = P x
+  wp pts (Step i c k) P = lookupStatePT pts i c (λ x -> wp pts (k x) P)
+\end{code}
+
+The predicate transformers corresponding to a single effect become:
+\begin{code}
+  ptParse : (c : CParser) -> (RParser c -> List Terminal -> Set) -> List Terminal -> Set
+  ptParse Parse P Nil = ⊤
+  ptParse Parse P (x :: xs) = P x xs
+  ptNondet : ∀ {a : Set} -> (c : CNondet) -> (RNondet c -> a -> Set) -> a -> Set
+  ptNondet Fail P _ = ⊤
+  ptNondet Split P s = (P True s) ∧ (P False s)
 \end{code}
 
 This allows us to define the language of an abstract parser: all strings such that the postcondition ``the unmatched string is empty'' is satisfied.
@@ -833,7 +875,7 @@ This allows us to define the language of an abstract parser: all strings such th
   empty? (_ :: _) = ⊥
 
   _∈[_] : ∀ {a} -> List Terminal -> FreeParser a -> Set
-  xs ∈[ S ] = wpParse S (λ _ -> empty?) xs
+  xs ∈[ S ] = wp (ptNondet :: ptParse :: Nil) S (λ _ -> empty?) xs
 \end{code}
 
 \section{From abstract grammars to abstract parsers}
@@ -842,40 +884,123 @@ as we will show by generating an abstract parser from a list |Production| rules.
 The approach is equivalent to the |generateParser| function by Kasper Brink. % TODO:cite
 However, nondeterminism and parsing is not enough: we also need general recursion to deal with definitions such as $E \to E$.
 \begin{code}
-  fromProductions : Productions -> (A : Nonterminal) -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) ⟦ A ⟧
-  fromProductions prods = go
-    where
-    record ProductionRHS (A : Nonterminal) : Set where
-      constructor prodrhs
-      field
-        rhs : Symbols
-        sem : ⟦ rhs ∥ A ⟧
+module FromProductions (gs : GrammarSymbols) (prods : Grammar.Productions gs) where
+  open GrammarSymbols gs
+  open Grammar gs
+  open Combinations
 
-    buildParser : {A : Nonterminal} -> (xs : Symbols) -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) ⟦ xs ∥ A ⟧ -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) ⟦ A ⟧
-    exact : ∀ {a} -> a -> Terminal -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) a
-    filterLHS : (A : Nonterminal) -> Productions -> List (ProductionRHS A)
-    fromProduction : {A : Nonterminal} -> ProductionRHS A -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) ⟦ A ⟧
-    go : (A : Nonterminal) -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) ⟦ A ⟧
+  record ProductionRHS (A : Nonterminal) : Set where
+    constructor prodrhs
+    field
+      rhs : Symbols
+      sem : ⟦ rhs ∥ A ⟧
 
-    filterLHS A Nil = Nil
-    filterLHS A (prod lhs rhs sem :: ps) with A ≟n lhs
-    ... | yes refl = prodrhs rhs sem :: filterLHS A ps
-    ... | no _ = filterLHS A ps
+  buildParser : {A : Nonterminal} -> (xs : Symbols) -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) (⟦ xs ∥ A ⟧ -> ⟦ A ⟧)
+  exact : ∀ {a} -> a -> Terminal -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) a
+  filterLHS : (A : Nonterminal) -> Productions -> List (ProductionRHS A)
+  fromProduction : {A : Nonterminal} -> ProductionRHS A -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) ⟦ A ⟧
+  fromProductions : (A : Nonterminal) -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) ⟦ A ⟧
 
-    exact x t = parse (∈Tail (∈Tail ∈Head)) >>= λ t' -> if' t ≟t t' then (λ _ -> Pure x) else λ _ -> fail (∈Tail ∈Head)
+  filterLHS A Nil = Nil
+  filterLHS A (prod lhs rhs sem :: ps) with A ≟n lhs
+  ... | yes refl = prodrhs rhs sem :: filterLHS A ps
+  ... | no _ = filterLHS A ps
 
-    buildParser Nil S = S
-    buildParser (Inl x :: xs) S = buildParser xs (S >>= λ o -> exact o x)
-    buildParser (Inr x :: xs) S = buildParser xs (S >>= λ f -> Step ∈Head x Pure >>= λ o -> Pure (f o))
+  exact x t = parse (∈Tail (∈Tail ∈Head)) >>= λ t' -> if' t ≟t t' then (λ _ -> Pure x) else λ _ -> fail (∈Tail ∈Head)
 
-    fromProduction (prodrhs rhs sem) = buildParser rhs (Pure sem)
+  buildParser Nil = Pure id
+  buildParser (Inl x :: xs) = exact tt x >>= λ _ -> buildParser xs
+  buildParser (Inr B :: xs) = call ∈Head B >>= (λ x -> buildParser xs >>= λ o -> Pure λ f -> o (f x))
 
-    go A = foldr (λ p -> split (∈Tail ∈Head) (fromProduction p)) (fail (∈Tail ∈Head)) (filterLHS A prods)
+  fromProduction (prodrhs rhs sem) = buildParser rhs >>= λ f -> Pure (f sem)
+
+  fromProductions A = foldr (split (∈Tail ∈Head)) (fail (∈Tail ∈Head)) (map fromProduction (filterLHS A prods))
 \end{code}
 
 Partial correctness is relatively simple to show as soon as we define the semantics of grammars.
+For ease of notation, we define two relations mutually recursively,
+one for all productions of a nonterminal,
+and for matching a string with a single production rule.
 \begin{code}
+module Correctness (gs : GrammarSymbols) where
+  open GrammarSymbols gs
+  open Grammar gs
+  open Combinations
 
+  data _⊢_∈⟦_⟧=>_,_ (prods : Productions) : List Terminal -> (A : Nonterminal) -> ⟦ A ⟧ -> List Terminal -> Set
+  data _⊢_~_=>_,_ (prods : Productions) {A : Nonterminal} : List Terminal -> (ps : Symbols) -> (⟦ ps ∥ A ⟧ -> ⟦ A ⟧) -> List Terminal -> Set
+
+  data _⊢_∈⟦_⟧=>_,_ prods where
+    Produce : ∀ {lhs rhs sem xs ys f} -> prod lhs rhs sem ∈ prods -> prods ⊢ xs ~ rhs => f , ys -> prods ⊢ xs ∈⟦ lhs ⟧=> f sem , ys
+  data _⊢_~_=>_,_ prods where
+    Done : ∀ {xs} -> prods ⊢ xs ~ Nil => id , xs
+    Next : ∀ {x xs ys ps o} -> prods ⊢ xs ~ ps => o , ys -> prods ⊢ (x :: xs) ~ (Inl x :: ps) => o , ys
+    Call : ∀ {A ps xs ys zs f o} -> prods ⊢ xs ∈⟦ A ⟧=> o , ys -> prods ⊢ ys ~ ps => f , zs -> prods ⊢ xs ~ (Inr A :: ps) => (λ g -> f (g o)) , zs
+\end{code}
+
+%if style == newcode
+\begin{code}
+  ptRec : ∀ {a : Set} {I : Set} {O : I -> Set} -> ((i : I) -> a -> O i -> a -> Set) -> (i : I) -> (O i -> a -> Set) -> a -> Set
+  ptRec R i P s = ∀ o s' -> R i s o s' -> P o s'
+
+  record StateSpec (s a : Set) : Set where
+    constructor [[_,_]]
+    field
+      pre : s -> Set
+      post : s -> a -> s -> Set
+
+  wpSpec : {s a : Set} -> StateSpec s a -> (a -> s -> Set) -> s -> Set
+  wpSpec [[ pre , post ]] P t = pre t ∧ (∀ o t' -> post t o t' -> P o t')
+
+  _⊑_ : {s a : Set} (pt1 pt2 : (a -> s -> Set) -> s -> Set) -> Set
+  pt1 ⊑ pt2 = ∀ P t -> pt1 P t -> pt2 P t
+\end{code}
+%endif
+
+\begin{code}
+  spec : Productions -> (A : Nonterminal) -> List Terminal -> ⟦ A ⟧ -> List Terminal -> Set
+  spec prods A xs o ys = prods ⊢ xs ∈⟦ A ⟧=> o , ys
+  spec' : Productions -> (A : Nonterminal) (xs : List Symbol) -> List Terminal -> (⟦ xs ∥ A ⟧ -> ⟦ A ⟧) -> List Terminal -> Set
+  spec' prods A xs t o ys = prods ⊢ t ~ xs => o , ys
+  wpFromProd : ∀ {a} -> (prod : Productions) -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) a -> (a -> List Terminal -> Set) -> List Terminal -> Set
+  wpFromProd prods = wp (ptRec (spec prods) :: ptNondet :: ptParse :: Nil)
+
+  consequence : ∀ {a b prods} (S : Free _ a) (f : a -> Free _ b) P xs ->
+    wpFromProd prods S (λ x xs' -> wpFromProd prods (f x) P xs') xs -> wpFromProd prods (S >>= f) P xs
+  consequence (Pure x) f P xs H = H
+  consequence (Step ∈Head c k) f P xs H o s' x = consequence (k o) f P s' (H o s' x)
+  consequence (Step (∈Tail ∈Head) Fail k) f P xs tt = tt
+  consequence (Step (∈Tail ∈Head) Split k) f P xs (fst , snd) = (consequence (k True) f P xs fst) , (consequence (k False) f P xs snd)
+  consequence (Step (∈Tail (∈Tail ∈Head)) Parse k) f P Nil H = tt
+  consequence (Step (∈Tail (∈Tail ∈Head)) Parse k) f P (x :: xs) H = consequence (k x) f P xs H
+
+  partialCorrectness : (prods : Productions) (A : Nonterminal) ->
+    wpSpec [[ (λ _ -> ⊤) , spec prods A ]] ⊑ wpFromProd prods (FromProductions.fromProductions gs prods A)
+  partialCorrectness prods A P xs H = filterStep prods A id P xs H
+    where
+    open FromProductions gs
+    lemma : (A : Nonterminal) (xs : Symbols) (P : (⟦ xs ∥ A ⟧ -> ⟦ A ⟧) -> List Terminal -> Set) (t : List Terminal) ->
+      ((o : ⟦ xs ∥ A ⟧ -> ⟦ A ⟧) (t' : List Terminal) -> prods ⊢ t ~ xs => o , t' -> P o t') ->
+      wpFromProd prods (buildParser prods xs) P t
+    lemma A Nil P t H = H id t Done
+    lemma A (Inl x :: xs) P Nil H = tt
+    lemma A (Inl x :: xs) P (x' :: t) H with x ≟t x'
+    ... | yes refl = lemma A xs P t λ o t' H' → H o t' (Next H')
+    ... | no ¬p = tt
+    lemma A (Inr B :: xs) P t H = consequence (call ∈Head B) (λ x → buildParser prods xs >>= λ o → Pure λ f → o (f x)) P t
+      λ x s' Hcall → consequence (buildParser prods xs) _ P s'
+      (lemma A xs (λ o t' → P (λ f → o (f x)) t') s' λ o t' H' → H (λ f → o (f x)) t' (Call Hcall H'))
+
+    filterStep : (prods' : Productions) (A : Nonterminal) ->
+      (∀ {p} -> p ∈ prods' -> p ∈ prods) ->
+      wpSpec [[ (λ _ -> ⊤) , spec prods A ]] ⊑ wpFromProd prods (foldr (split (∈Tail ∈Head)) (fail (∈Tail ∈Head)) (map (fromProduction prods) (filterLHS prods A prods')))
+    filterStep Nil A i P xs H = tt
+    filterStep (prod lhs rhs sem :: prods') A i P xs H with A ≟n lhs
+    filterStep (prod .A rhs sem :: prods') A i P xs (_ , H) | yes refl = consequence (buildParser prods rhs) _ P xs
+      (lemma A rhs (λ f -> P (f sem)) xs
+        λ o t' H' → H (o sem) t' (Produce (i ∈Head) H')) ,
+      filterStep prods' A (i ∘ ∈Tail) P xs (_ , H)
+    ... | no ¬p = filterStep prods' A (i ∘ ∈Tail) P xs H
 \end{code}
 
 Termination is somewhat more subtle: since we call the same nonterminal repeatedly,
