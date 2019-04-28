@@ -9,6 +9,8 @@
 \begin{code}
 {-# OPTIONS --type-in-type #-}
 open import Prelude
+open import Level
+postulate extensionality : Extensionality zero zero
 
 _⊆_ : {a : Set} -> (P Q : a -> Set) -> Set
 P ⊆ Q = ∀ x -> P x -> Q x
@@ -130,6 +132,12 @@ so we define it in terms of the predicate transformer associated with the progra
   _⊑_ : {a : Set} (pt1 pt2 : (a -> Set) -> Set) -> Set
   pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
 \end{code}
+%if style == newcode
+\begin{code}
+  ⊑-refl : ∀ {a} {pt : (a -> Set) -> Set} -> pt ⊑ pt
+  ⊑-refl P x = x
+\end{code}
+%endif
 
 \section{Almost parsing regular languages}
 %if style == newcode
@@ -206,6 +214,9 @@ record SplitList {a : Set} (xs : List a) : Set where
     lhs : List a
     rhs : List a
     cat : xs == (lhs ++ rhs)
+
+addLHS : ∀ {a} (x : a) (xs : List a) -> SplitList xs -> SplitList (x :: xs)
+addLHS x xs spl = splitList (x :: SplitList.lhs spl) (SplitList.rhs spl) (cong (Cons x) (SplitList.cat spl))
 \end{code}
 %if style == newcode
 \begin{code}
@@ -217,11 +228,12 @@ module AlmostRegex where
 \end{code}
 %endif
 \begin{code}
+
   allSplits : ∀ {a} -> (xs : List a) -> Free ENondet (SplitList xs)
   allSplits Nil = Pure (splitList Nil Nil refl)
   allSplits (x :: xs) = split
     (Pure (splitList Nil (x :: xs) refl))
-    (allSplits xs >>= λ spl -> Pure (splitList (x :: SplitList.lhs spl) (SplitList.rhs spl) (cong (Cons x) (SplitList.cat spl))))
+    (allSplits xs >>= λ spl -> Pure (addLHS x xs spl))
 \end{code}
 
 Armed with this helper function, we can write our first nondeterministic regular expression matcher,
@@ -383,6 +395,14 @@ We can define the monadic bind |_>>=_| in the same way as in the previous defini
   _>>=_ : ∀ {a b es} -> Free es a -> (a -> Free es b) -> Free es b
   Pure x >>= f = f x
   Step i c k >>= f = Step i c λ x -> k x >>= f
+  >>=-assoc : ∀ {a b c es} (S : Free es a) (f : a -> Free es b) (g : b -> Free es c) ->
+    (S >>= f) >>= g == S >>= (λ x -> f x >>= g)
+  >>=-assoc (Pure x) f g = refl
+  >>=-assoc (Step i c k) f g = cong (Step i c) (extensionality λ x -> >>=-assoc (k x) _ _)
+  >>=-Pure : ∀ {a es} (S : Free es a) ->
+    S >>= Pure == S
+  >>=-Pure (Pure x) = refl
+  >>=-Pure (Step i c k) = cong (Step i c) (extensionality λ x -> >>=-Pure (k x))
 \end{code}
 %endif
 We also to make a small modification to the smart constructors for nondeterminism,
@@ -459,7 +479,7 @@ Now we are able to handle the Kleene star:
   allSplits i Nil = Pure (splitList Nil Nil refl)
   allSplits i (x :: xs) = split i
     (Pure (splitList Nil (x :: xs) refl))
-    (allSplits i xs >>= λ spl -> Pure (splitList (x :: SplitList.lhs spl) (SplitList.rhs spl) (cong (Cons x) (SplitList.cat spl))))
+    (allSplits i xs >>= λ spl -> Pure (addLHS x xs spl))
 
   match : ∀ {es} -> (ERec (Pair Regex String) (λ _ -> List Nat) ∈ es) -> (ENondet ∈ es) ->
     Pair Regex String -> Free es (List Nat)
@@ -494,30 +514,32 @@ As discussed, we first need to give the specification for |match| before we can 
 In a few places, we use a recursive |call| instead of actual recursion.
 One advantage to this choice is that in proving correctness,
 we can use the specification of |match| directly,
-without having to use |wpBind| in between.
-Unfortunately, we still need |wpBind| to deal with the call to |allSplits|.
-We give a proof specialized for |wpMatch|,
-although it generalizes to all |pts| passed to |wpFree|.
+without having to use the following rule of |consequence| in between.
+Unfortunately, we still need |consequence| to deal with the call to |allSplits|.
 \begin{code}
-  wpBind : ∀ {a b} post (mx : Free _ a) (f : a -> Free _ b) ->
-    wpMatch mx post ->
-    ∀ P -> (∀ x -> post x -> wpMatch (f x) P) ->
-    wpMatch (mx >>= f) P
-  wpBind post (Pure x) f mxH P postH = postH x mxH
-  wpBind post (Step ∈Head (r , xs) k) f mxH P postH = λ o H -> wpBind post (k o) f (mxH o H) P postH
-  wpBind post (Step (∈Tail ∈Head) Fail k) f mxH P postH = mxH
-  wpBind post (Step (∈Tail ∈Head) Split k) f (fst , snd) P postH =
-    wpBind post (k True) f fst P postH , wpBind post (k False) f snd P postH
+  consequence : ∀ {a b es pts P} (mx : Free es a) (f : a -> Free es b) ->
+    wpFree pts mx (λ x -> wpFree pts (f x) P) == wpFree pts (mx >>= f) P
+  consequence (Pure x) f = refl
+  consequence (Step i c k) f = cong (lookupPT _ i c) (extensionality λ x -> consequence (k x) f)
+
+  wpToBind : ∀ {a b es pts P} (mx : Free es a) (f : a -> Free es b) ->
+    wpFree pts mx (λ x -> wpFree pts (f x) P) -> wpFree pts (mx >>= f) P
+  wpToBind mx f H = subst id (consequence mx f) H
+
+  wpFromBind : ∀ {a b es pts P} (mx : Free es a) (f : a -> Free es b) ->
+    wpFree pts (mx >>= f) P -> wpFree pts mx (λ x -> wpFree pts (f x) P)
+  wpFromBind mx f H = subst id (sym (consequence mx f)) H
 \end{code}
 
 We can reuse exactly the same proof to show |allSplits| is correct,
 since we use the same semantics for the effects in |allSplits|.
 %if style == newcode
 \begin{code}
-  allSplitsCorrect : ∀ (xs : String) ->
-    wpMatch (allSplits (∈Tail ∈Head) xs) (λ _ -> ⊤)
-  allSplitsCorrect Nil = tt
-  allSplitsCorrect (x :: xs) = tt , wpBind (const ⊤) (allSplits _ xs) _ (allSplitsCorrect xs) _ λ _ _ -> tt
+  allSplitsCorrect : ∀ (xs : String) P ->
+    (∀ (spl : SplitList xs) -> P spl) ->
+    wpMatch (allSplits (∈Tail ∈Head) xs) P
+  allSplitsCorrect Nil P H = H _
+  allSplitsCorrect (x :: xs) P H = H _ , wpToBind (allSplits (∈Tail ∈Head) xs) _ (allSplitsCorrect xs (P ∘ addLHS x xs) (λ spl -> H (addLHS x xs spl)))
 \end{code}
 %endif
 On the other hand, the correctness proof for |match| needs a bit of tweaking to deal with the difference in the recursive steps.
@@ -531,8 +553,8 @@ On the other hand, the correctness proof for |match| needs a bit of tweaking to 
   pf (Singleton c , (.c :: Nil)) P (preH , postH) | yes refl = postH _ Singleton
   pf (Singleton c , (x :: Nil)) P (preH , postH) | no ¬p = tt
   pf (Singleton c , (_ :: _ :: _)) P (preH , postH) = tt
-  pf ((l · r) , xs) P (preH , postH) = wpBind _ (allSplits (∈Tail ∈Head) xs) _ (allSplitsCorrect xs) P
-    λ {(splitList lhs rhs refl) _ mls lH mrs rH -> postH _ (Concat lH rH)}
+  pf ((l · r) , xs) P (preH , postH) = wpToBind (allSplits (∈Tail ∈Head) xs) _
+    (allSplitsCorrect xs _ (λ {(splitList lhs rhs refl) mls lH mrs rH -> postH _ (Concat lH rH)}))
   pf ((l ∣ r) , xs) P (preH , postH) = (λ o H -> postH _ (OrLeft H)) , (λ o H -> postH _ (OrRight H))
   pf (Mark n r , xs) P (preH , postH) = λ o H -> postH (n :: o) (Mark H)
 \end{code}
@@ -605,18 +627,68 @@ When we apply this to matching, we get the function |dmatch|.
   dmatch iRec iND (r , (x :: xs)) = call iRec ((d r /d x) , xs)
 \end{code}
 
-Since |dmatch| always consumes a character before going in recursion, we can easily prove it calls itself on smaller arguments.
-This means that for all input values, after substituting itself in the definition enough times, we get rid of all (general) recursion.
-In other words: |dmatch| terminates.
+Since |dmatch| always consumes a character before going in recursion, we can easily prove that each recursive call only leads to finitely many other calls.
+This means that for each input value we can unfold the recursive step in the definition a bounded number of times and get a computation with no recursion.
+Intuitively, this means that |dmatch| terminates on all input.
+If we want to make this more formal, we need to consider what it means to have no recursion in the computation.
+A definition for the |while| loop using general recursion looks as follows:
 \begin{code}
+  while : ∀ {es a} -> (ERec a (K a) ∈ es) -> (a -> Bool) -> (a -> a) -> (a -> Free es a)
+  while iRec cond body i = if cond i then Pure i else (call iRec (body i))
+\end{code}
+We would like to say that some |while| loops terminate, yet the definition of |while| always contains a |call| in it.
+Thus, the requirement should not be that there are no more calls left,
+but that these calls are irrelevant.
+A next intuitive idea could be the following:
+if we make the recursive computation into a |Partial| computation by |fail|ing instead of |call|ing,
+the |Partial| computation still works the same, i.e. it refines, the recursive computation.
+However, this mixes the concepts of correctness and termination.
+We want to see that the computation terminates with some output, without caring about which output this is.
+Thus, we should only have a trivial postcondition |λ _ -> ⊤|.
+We formalize this idea in the |termination| predicate.
+%if style == newcode
+\begin{code}
+  ∈-++ : ∀ {a x} {xs ys : List a} -> x ∈ ys -> x ∈ (xs ++ ys)
+  ∈-++ {xs = Nil} i = i
+  ∈-++ {xs = x :: xs} i = ∈Tail (∈-++ i)
+
+  repeat : ∀ {a : Set} -> Nat -> (a -> a) -> a -> a
+  repeat Zero f x = x
+  repeat (Succ n) f x = repeat n f (f x) -- or |f (repeat n f x)| ?
+
+  open import Data.Nat using (_+_; _≤_)
+\end{code}
+%endif
+\begin{code}
+  data CPartial : Set where
+    Fail : CPartial
+  RPartial : CPartial -> Set
+  RPartial Fail = ⊥
+  EPartial = eff CPartial RPartial
+  ptPartial : (c : CPartial) -> (RPartial c -> Set) -> Set
+  ptPartial Fail _ = ⊥
+
+  unfold : ∀ {I O es a} (f : (i : I) -> Free (ERec I O :: es) (O i)) ->
+    (Free (ERec I O :: es) a) -> Nat -> Free (EPartial :: es) a
+  unfold f (Pure x) n = Pure x
+  unfold f (Step ∈Head c k) Zero = Step ∈Head Fail λ ()
+  unfold f (Step ∈Head c k) (Succ n) = unfold f (f c) n >>= λ o -> unfold f (k o) (Succ n)
+  unfold f (Step (∈Tail i) c k) n = Step (∈Tail i) c λ o -> unfold f (k o) n
+
   terminates-in : ∀ {I O a es} (pts : PTs es) (f : (i : I) -> Free (ERec I O :: es) (O i)) ->
     Free (ERec I O :: es) a -> Nat -> Set
-  terminates-in pts f S Zero = ⊥
-  terminates-in pts f (Pure x) (Succ n) = ⊤
-  terminates-in pts f (Step ∈Head c k) (Succ n) = terminates-in pts f (f c) n ∧ ∀ x -> terminates-in pts f (k x) (Succ n)
-  terminates-in pts f (Step (∈Tail i) c k) (Succ n) = lookupPT pts i c λ x -> terminates-in pts f (k x) (Succ n)
+  terminates-in pts f S n = wpFree (ptPartial :: pts) (unfold f S n) (λ _ -> ⊤)
+
   termination : ∀ {I O es} (pts : PTs es) (f : (i : I) -> Free (ERec I O :: es) (O i)) -> Set
-  termination pts f = ∀ i -> Sigma Nat λ n -> terminates-in pts f (f i) n
+  termination pts f = ∀ i -> Sigma Nat (terminates-in pts f (f i))
+\end{code}
+
+To show that |dmatch| actually terminates, we need two small helper lemmas.
+\begin{code}
+  terminates-call : ∀ {I O es} pts (f : (i : I) -> Free (ERec I O :: es) (O i)) ->
+    (i : I) (n : Nat) ->
+    terminates-in pts f (f i) n -> terminates-in pts f (call ∈Head i) (Succ n)
+  terminates-call pts f i n t = subst (λ S -> wpFree _ S _) (sym (>>=-Pure (unfold f (f i) n))) t
 
   dmatch-terminates : termination (ptNondet :: Nil) (dmatch ∈Head (∈Tail ∈Head))
   dmatch-terminates (r , xs) = Succ (length xs) , lemma r xs
@@ -625,13 +697,7 @@ In other words: |dmatch| terminates.
     lemma r Nil with ε? r
     lemma r Nil | yes p = tt
     lemma r Nil | no ¬p = tt
-    lemma r@Empty (x :: xs) = lemma (d r /d x) xs , λ _ -> tt
-    lemma r@Epsilon (x :: xs) = lemma (d r /d x) xs , λ _ -> tt
-    lemma r@(Singleton _) (x :: xs) = lemma (d r /d x) xs , λ _ -> tt
-    lemma r@(_ · _) (x :: xs) = lemma (d r /d x) xs , λ _ -> tt
-    lemma r@(_ ∣ _) (x :: xs) = lemma (d r /d x) xs , λ _ -> tt
-    lemma r@(_ *) (x :: xs) = lemma (d r /d x) xs , λ _ -> tt
-    lemma r@(Mark n _) (x :: xs) = lemma (d r /d x) xs , (λ _ -> tt)
+    lemma r (x :: xs) = terminates-call (ptNondet :: Nil) (dmatch _ _) ((d r /d x) , xs) (Succ (length xs)) (lemma (d r /d x) xs)
 \end{code}
 
 Moreover, |dmatch| is a refinement of |match|, which means it is also correct.
@@ -673,15 +739,6 @@ First we show that |d r /d x| matches strings |xs| such that |r| matches |x :: x
   derivativeCorrect (l ∣ r) x xs ms (OrRight m) = OrRight (derivativeCorrect _ _ _ _ m)
   derivativeCorrect (r *) x xs ms (Concat ml mr) = StarConcat (Concat (derivativeCorrect _ _ _ _ ml) mr)
   derivativeCorrect (Mark n r) x xs .(n :: _) (Mark m) = Mark (derivativeCorrect _ _ _ _ m)
-\end{code}
-
-\begin{code}
-  consequence : ∀ {a b} (S : Free _ a) (f : a -> Free _ b) P ->
-    wpMatch (S >>= f) P -> wpMatch S (λ x -> wpMatch (f x) P)
-  consequence (Pure x) f P H = H
-  consequence (Step ∈Head c k) f P H o x = consequence (k o) f P (H o x)
-  consequence (Step (∈Tail ∈Head) Fail k) f P .tt = tt
-  consequence (Step (∈Tail ∈Head) Split k) f P (fst , snd) = consequence (k True) f P fst , consequence (k False) f P snd
 \end{code}
 
 \begin{code}
@@ -965,14 +1022,18 @@ module Correctness (gs : GrammarSymbols) where
   wpFromProd : ∀ {a} -> (prod : Productions) -> Free (ERec Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil) a -> (a -> List Terminal -> Set) -> List Terminal -> Set
   wpFromProd prods = wp (ptRec (spec prods) :: ptNondet :: ptParse :: Nil)
 
-  consequence : ∀ {a b prods} (S : Free _ a) (f : a -> Free _ b) P xs ->
-    wpFromProd prods S (λ x xs' -> wpFromProd prods (f x) P xs') xs -> wpFromProd prods (S >>= f) P xs
-  consequence (Pure x) f P xs H = H
-  consequence (Step ∈Head c k) f P xs H o s' x = consequence (k o) f P s' (H o s' x)
-  consequence (Step (∈Tail ∈Head) Fail k) f P xs tt = tt
-  consequence (Step (∈Tail ∈Head) Split k) f P xs (fst , snd) = (consequence (k True) f P xs fst) , (consequence (k False) f P xs snd)
-  consequence (Step (∈Tail (∈Tail ∈Head)) Parse k) f P Nil H = tt
-  consequence (Step (∈Tail (∈Tail ∈Head)) Parse k) f P (x :: xs) H = consequence (k x) f P xs H
+  consequence : ∀ {a b s es} (pts : StatePTs s es) {P} (mx : Free es a) (f : a -> Free es b) ->
+    ∀ t -> wp pts mx (λ x t -> wp pts (f x) P t) t == wp pts (mx >>= f) P t
+  consequence pts (Pure x) f t = refl
+  consequence pts (Step i c k) f t = cong (λ P -> lookupStatePT pts i c P t) (extensionality λ x -> extensionality λ t -> consequence pts (k x) f t)
+
+  wpToBind : ∀ {a b s es} (pts : StatePTs s es) {P} (mx : Free es a) (f : a -> Free es b) ->
+    ∀ t -> wp pts mx (λ x t -> wp pts (f x) P t) t -> wp pts (mx >>= f) P t
+  wpToBind pts mx f t H = subst id (consequence pts mx f t) H
+
+  wpFromBind : ∀ {a b s es} (pts : StatePTs s es) {P} (mx : Free es a) (f : a -> Free es b) ->
+    ∀ t -> wp pts (mx >>= f) P t -> wp pts mx (λ x t -> wp pts (f x) P t) t
+  wpFromBind pts mx f t H = subst id (sym (consequence pts mx f t)) H
 
   partialCorrectness : (prods : Productions) (A : Nonterminal) ->
     wpSpec [[ (λ _ -> ⊤) , spec prods A ]] ⊑ wpFromProd prods (FromProductions.fromProductions gs prods A)
@@ -985,29 +1046,203 @@ module Correctness (gs : GrammarSymbols) where
     lemma A Nil P t H = H id t Done
     lemma A (Inl x :: xs) P Nil H = tt
     lemma A (Inl x :: xs) P (x' :: t) H with x ≟t x'
-    ... | yes refl = lemma A xs P t λ o t' H' → H o t' (Next H')
+    ... | yes refl = lemma A xs P t λ o t' H' -> H o t' (Next H')
     ... | no ¬p = tt
-    lemma A (Inr B :: xs) P t H = consequence (call ∈Head B) (λ x → buildParser prods xs >>= λ o → Pure λ f → o (f x)) P t
-      λ x s' Hcall → consequence (buildParser prods xs) _ P s'
-      (lemma A xs (λ o t' → P (λ f → o (f x)) t') s' λ o t' H' → H (λ f → o (f x)) t' (Call Hcall H'))
+    lemma A (Inr B :: xs) P t H = wpToBind (ptRec _ :: _) (call ∈Head B) (λ x -> buildParser prods xs >>= λ o -> Pure λ f -> o (f x)) t
+      λ x s' Hcall -> wpToBind _ (buildParser prods xs) _ s'
+      (lemma A xs (λ o t' -> P (λ f -> o (f x)) t') s' λ o t' H' -> H (λ f -> o (f x)) t' (Call Hcall H'))
 
     filterStep : (prods' : Productions) (A : Nonterminal) ->
       (∀ {p} -> p ∈ prods' -> p ∈ prods) ->
       wpSpec [[ (λ _ -> ⊤) , spec prods A ]] ⊑ wpFromProd prods (foldr (split (∈Tail ∈Head)) (fail (∈Tail ∈Head)) (map (fromProduction prods) (filterLHS prods A prods')))
     filterStep Nil A i P xs H = tt
     filterStep (prod lhs rhs sem :: prods') A i P xs H with A ≟n lhs
-    filterStep (prod .A rhs sem :: prods') A i P xs (_ , H) | yes refl = consequence (buildParser prods rhs) _ P xs
+    filterStep (prod .A rhs sem :: prods') A i P xs (_ , H) | yes refl = wpToBind _ (buildParser prods rhs) _ xs
       (lemma A rhs (λ f -> P (f sem)) xs
-        λ o t' H' → H (o sem) t' (Produce (i ∈Head) H')) ,
+        λ o t' H' -> H (o sem) t' (Produce (i ∈Head) H')) ,
       filterStep prods' A (i ∘ ∈Tail) P xs (_ , H)
     ... | no ¬p = filterStep prods' A (i ∘ ∈Tail) P xs H
 \end{code}
 
 Termination is somewhat more subtle: since we call the same nonterminal repeatedly,
 we cannot get rid of all recursion after enough substitutions of the definition.
-Consider the language given by $E -> 'a' E \mid 'b'$.
-However, we can show that substituting a fixed number of times, and then giving up using |fail|.
-If each right hand side has a nonterminal, then the parser terminates in this weaker sense.
+Consider the grammar given by $E \rightarrow a E \mid b$,
+where we see that the string that matches $E$ in the recursive case is shorter than the original string.
+Fortunately for us, predicate transformer semantics give a more subtle definition of termination.
+The |terminates-in| predicate defined above says that making the recursive calls fail after enough substitutions
+should give identical behaviour to the original program.
+Still, this is not sufficient to show that all grammars have a terminating parser:
+a language of degenerate grammars such as given by $E \rightarrow E$ is not well-defined.
+
+Intuitively, the condition on the grammars should be that they are not left-recursive,
+since in that case, the parser should always advance its position in the string before it encounters the same non-terminal.
+This means that the number of recursive calls to |fromProductions| is bounded
+by the length of the string times the number of different nonterminals occuring in the production rules.
+The type we will use to describe the predicate ``there is no left recursion'' is constructively somewhat stronger:
+we define a left-recursion chain to be a sequence of nonterminals $\{A_i\}$ such that $A_{i+1}$ occurs before a terminal in a production of $A_i$.
+\begin{code}
+  data LeftRecChain : Productions -> Nonterminal -> Set where
+    Nil : ∀ {prods A} -> LeftRecChain prods A
+    _::_ : ∀ {prods A} {xs : List Nonterminal} {B : Nonterminal} {ys sem} -> prod A (map Inr xs ++ (Inr B :: ys)) sem ∈ prods -> LeftRecChain prods A -> LeftRecChain prods B
+\end{code}
+And then we say that a set of productions has no left recursion if all such chains have an upper bound on their length.
+%if style == newcode
+\begin{code}
+  open import Data.Nat
+  open import Data.Nat.Properties
+\end{code}
+%endif
+\begin{code}
+  chainLength : ∀ {prods A} -> LeftRecChain prods A -> Nat
+  chainLength Nil = 0
+  chainLength (c :: cs) = Succ (chainLength cs)
+
+  leftRecBound : Productions -> Nat -> Set
+  leftRecBound prods n = ∀ {A} -> (cs : LeftRecChain prods A) -> chainLength cs < n
+\end{code}
+%if style == newcode
+\begin{code}
+  data CPartial : Set where
+    Fail : CPartial
+  RPartial : CPartial -> Set
+  RPartial Fail = ⊥
+  EPartial = eff CPartial RPartial
+  ptPartial : ∀ {s : Set} -> (c : CPartial) -> (RPartial c -> s -> Set) -> s -> Set
+  ptPartial Fail _ _ = ⊥
+
+  unfold : ∀ {I O es a} (f : (i : I) -> Free (ERec I O :: es) (O i)) ->
+    (Free (ERec I O :: es) a) -> Nat -> Free (EPartial :: es) a
+  unfold f (Pure x) n = Pure x
+  unfold f (Step ∈Head c k) Zero = Step ∈Head Fail λ ()
+  unfold f (Step ∈Head c k) (Succ n) = unfold f (f c) n >>= λ o -> unfold f (k o) (Succ n)
+  unfold f (Step (∈Tail i) c k) n = Step (∈Tail i) c λ o -> unfold f (k o) n
+
+  terminates-in : ∀ {I O a s es} (pts : StatePTs s es) (f : (i : I) -> Free (ERec I O :: es) (O i)) ->
+    Free (ERec I O :: es) a -> s -> Nat -> Set
+  terminates-in pts f S t n = wp (ptPartial :: pts) (unfold f S n) (λ _ _ -> ⊤) t
+
+  termination : ∀ {I O s es} (pts : StatePTs s es) (f : (i : I) -> Free (ERec I O :: es) (O i)) -> Set
+  termination pts f = ∀ i t -> Sigma Nat (terminates-in pts f (f i) t)
+\end{code}
+%endif
+\begin{code}
+  fromProductionsTerminates : ∀ (prods : Productions) ->
+    (bound : Nat) -> leftRecBound prods bound ->
+    termination (ptNondet :: ptParse :: Nil) (FromProductions.fromProductions gs prods)
+  fromProductionsTerminates prods bound H A str =
+    let n = Succ (length str * bound) + bound
+    in n , wp-monotone (unfold fromProductions (fromProductions A) _) str (λ _ _ _ -> tt) (filterStep A str n Nil ≤-refl)
+    where
+    open FromProductions gs prods
+
+    parseStep : ∀ {prods A str x str'} -> spec prods A str x str' -> length str' ≤ length str
+    parseRelStep : ∀ {A prods str rhs} {f : ⟦ rhs ∥ A ⟧ -> ⟦ A ⟧} {str'} -> prods ⊢ str ~ rhs => f , str' -> length str' ≤ length str
+    parseRelStep Done = ≤-refl
+    parseRelStep (Next H) = ≤-step (parseRelStep H)
+    parseRelStep (Call Hc H) = ≤-trans (parseRelStep H) (parseStep Hc)
+    parseStep (Produce i H) = parseRelStep H
+
+    -- we have only encountered nonterminals in building this production
+    firstBuildingStep : ∀ {A} str n (cs : LeftRecChain prods A) -> Succ (length str * bound + bound ∸ chainLength cs) ≤ n ->
+      ∀ Bs (xs : Symbols) {sem} (i : prod A (map Inr Bs ++ xs) sem ∈ prods) ->
+      wp (ptPartial :: ptNondet :: ptParse :: Nil) (unfold fromProductions (buildParser {A} xs) n) (λ _ str' -> length str' ≤ length str) str
+    nextBuildingStep : ∀ {A} str n -> Succ (length str * bound + bound) < n ->
+      (xs : Symbols) ->
+      wp (ptPartial :: ptNondet :: ptParse :: Nil) (unfold fromProductions (buildParser {A} xs) n) (λ _ str' -> length str' ≤ length str) str
+    filterStep : ∀ A str n (cs : LeftRecChain prods A) -> Succ (length str * bound + bound ∸ chainLength cs) ≤ n ->
+      wp (ptPartial :: ptNondet :: ptParse :: Nil) (unfold fromProductions (fromProductions A) n) (λ _ str' -> length str' ≤ length str) str
+    filterStep' : ∀ prods' A str n (cs : LeftRecChain prods A) -> Succ (length str * bound + bound ∸ chainLength cs) ≤ n ->
+      (∀ {x} -> x ∈ prods' -> x ∈ prods) ->
+      wp (ptPartial :: ptNondet :: ptParse :: Nil) (unfold fromProductions (foldr (split (∈Tail ∈Head)) (fail (∈Tail ∈Head)) (map fromProduction (filterLHS A prods'))) n) (λ _ str' -> length str' ≤ length str) str
+
+    unfold->>= : ∀ {a b I O es} (S : Free (ERec I O :: es) a) (f : a -> Free (ERec I O :: es) b) ->
+      ∀ r n -> unfold r (S >>= f) n == (unfold r S n >>= λ x -> unfold r (f x) n)
+    unfold->>= (Pure x) f r n = refl
+    unfold->>= (Step ∈Head c k) f r Zero = cong (Step ∈Head Fail) (extensionality λ ())
+    unfold->>= (Step ∈Head c k) f r (Succ n) = trans (cong (unfold r (r c) n >>=_) (extensionality λ x -> unfold->>= (k x) f r (Succ n))) (sym (>>=-assoc (unfold r (r c) n) _ _))
+    unfold->>= (Step (∈Tail i) c k) f r n = cong (Step (∈Tail i) c) (extensionality λ x -> unfold->>= (k x) f r n)
+
+    +-∸-≤ : ∀ a b c -> (c ≤ b) -> a ≤ b + a ∸ c
+    +-∸-≤ Zero b c lt = z≤n
+    +-∸-≤ (Succ a) b Zero lt = ≤-trans (s≤s (+-∸-≤ a b Zero lt)) (≤-reflexive (sym (+-suc b a)))
+    +-∸-≤ (Succ a) (Succ b) (Succ c) (s≤s lt) = +-∸-≤ (Succ a) b c lt
+    +-∸-< : ∀ a b c -> (c < b) -> a < b + a ∸ c
+    +-∸-< Zero (Succ b) Zero (s≤s z≤n) = s≤s z≤n
+    +-∸-< Zero (Succ (Succ b)) (Succ c) (s≤s (s≤s lt)) = ≤-trans (≤-reflexive (sym (m+n∸n≡m 1 b))) (∸-mono (≤-reflexive (cong Succ (sym (+-identityʳ b)))) lt)
+    +-∸-< (Succ a) (Succ b) Zero (s≤s lt) = s≤s (+-mono-≤ (z≤n {b}) ≤-refl)
+    +-∸-< (Succ a) (Succ b) (Succ c) (s≤s lt) = +-∸-< (Succ a) b c lt
+
+    Succ-∸-Succ : ∀ a b -> Succ b ≤ a -> Succ (a ∸ (Succ b)) == a ∸ b
+    Succ-∸-Succ (Succ a) Zero (s≤s z≤n) = refl
+    Succ-∸-Succ (Succ (Succ a)) (Succ b) (s≤s (s≤s lt)) = Succ-∸-Succ (Succ a) b (s≤s lt)
+
+    map-snoc : ∀ {a b} {f : a -> b} x xs ys -> map f xs ++ (f x :: ys) == map f (xs ++ (x :: Nil)) ++ ys
+    map-snoc x Nil ys = refl
+    map-snoc {f = f} x (x' :: xs) ys = cong (f x' ::_) (map-snoc x xs ys)
+
+    subst2 : ∀ {A} {B : A -> Set} (C : (x : A) -> B x -> Set) {x x' : A} {y : B x} (p : x == x') -> C x y -> C x' (subst B p y)
+    subst2 C refl z = z
+
+    next-nonterminal : ∀ {A B Bs xs sem} -> prod A (map Inr Bs ++ (Inr B :: xs)) sem ∈ prods -> prod A (map Inr (Bs ++ (B :: Nil)) ++ xs) (subst (λ xs' -> ⟦ xs' ∥ A ⟧) (map-snoc B Bs xs) sem) ∈ prods
+    next-nonterminal {A} {B} {Bs} {xs} {sem} i = subst2 (λ xs' sem' → prod A xs' sem' ∈ prods) (map-snoc B Bs xs) i
+
+    wp-monotone : ∀ {a P Q} (S : Free _ a) t -> (∀ x t -> P x t -> Q x t) ->
+      wp (ptPartial :: ptNondet :: ptParse :: Nil) S P t -> wp (ptPartial :: ptNondet :: ptParse :: Nil) S Q t
+    wp-monotone (Pure x) t imp asm = imp x _ asm
+    wp-monotone (Step ∈Head c k) t imp asm = asm
+    wp-monotone (Step (∈Tail ∈Head) Fail k) t imp asm = asm
+    wp-monotone (Step (∈Tail ∈Head) Split k) t imp (fst , snd) = wp-monotone (k True) t imp fst , wp-monotone (k False) t imp snd
+    wp-monotone (Step (∈Tail (∈Tail ∈Head)) Parse k) Nil imp asm = asm
+    wp-monotone (Step (∈Tail (∈Tail ∈Head)) Parse k) (x :: xs) imp asm = wp-monotone (k x) xs imp asm
+
+    firstBuildingStep str (Succ n) cs (s≤s lt) Bs Nil i = ≤-refl
+    firstBuildingStep {A} str (Succ n) cs (s≤s lt) Bs (Inr B :: xs) {sem} i = wpToBind _
+      (unfold fromProductions (fromProductions B) n) _ str
+      (wp-monotone
+        (unfold fromProductions (fromProductions B) n) str
+        (λ _ str' lt' -> subst (λ S -> wp _ S _ str') (sym (unfold->>= (buildParser xs) _ fromProductions (Succ n)))
+        (wpToBind _ (unfold fromProductions (buildParser xs) (Succ n)) _ str'
+          (wp-monotone (unfold fromProductions (buildParser xs) (Succ n)) str'
+            (λ _ str'' lt'' → ≤-trans lt'' lt')
+            (firstBuildingStep str' (Succ n) cs (s≤s (≤-trans (∸-mono (+-mono-≤ (*-mono-≤ lt' (≤-refl {bound})) (≤-refl {bound})) (≤-refl {chainLength cs})) lt)) (Bs ++ (B :: Nil)) xs (next-nonterminal i)))))
+        (filterStep B str n (i :: cs) (≤-trans (≤-reflexive (Succ-∸-Succ (length str * bound + bound) (chainLength cs) (+-mono-≤ (z≤n {length str * bound}) (H cs)))) lt)))
+    firstBuildingStep Nil (Succ n) cs (s≤s lt) Bs (Inl x :: xs) i = tt
+    firstBuildingStep (s :: str) (Succ n) cs (s≤s lt) Bs (Inl x :: xs) i with x ≟t s
+    ... | yes refl = wp-monotone (unfold fromProductions (buildParser xs) (Succ n)) str (λ x str' lt -> ≤-step lt)
+      (nextBuildingStep str (Succ n)
+        (s≤s (≤-trans (≤-trans (+-∸-< (length str * bound + bound) bound (chainLength cs) (H cs)) (≤-reflexive (cong (_∸ chainLength cs) (sym (+-assoc bound _ _))))) lt))
+        xs)
+    ... | no ¬p = tt
+
+    nextBuildingStep str (Succ n) (s≤s lt) Nil = ≤-refl
+    nextBuildingStep {A} str (Succ n) (s≤s lt) (Inr B :: xs) = wpToBind _
+      (unfold fromProductions (fromProductions B) n) _ str
+      (wp-monotone
+        (unfold fromProductions (fromProductions B) n) str
+        (λ _ str' lt' -> subst (λ S → wp _ S _ str') (sym (unfold->>= (buildParser xs) _ fromProductions (Succ n)))
+        (wpToBind _ (unfold fromProductions (buildParser xs) (Succ n)) _ str'
+          (wp-monotone (unfold fromProductions (buildParser xs) (Succ n)) str'
+          (λ _ str'' lt'' -> ≤-trans lt'' lt')
+          (nextBuildingStep str' (Succ n) (s≤s (≤-trans (s≤s (+-mono-≤ (*-mono-≤ lt' ≤-refl) (≤-refl {bound}))) lt)) xs))))
+      (filterStep B str n Nil lt))
+    nextBuildingStep Nil (Succ n) (s≤s lt) (Inl x :: xs) = tt
+    nextBuildingStep (s :: str) (Succ n) (s≤s lt) (Inl x :: xs) with x ≟t s
+    ... | yes refl = wp-monotone (unfold fromProductions (buildParser xs) (Succ n)) str (λ x str' lt -> ≤-step lt) (nextBuildingStep str (Succ n) (s≤s (≤-trans (s≤s (+-mono-≤ (+-mono-≤ (z≤n {bound}) ≤-refl) (≤-refl {bound}))) lt)) xs)
+    ... | no ¬p = tt
+
+    filterStep A str n cs lt = filterStep' prods A str n cs lt (λ i -> i)
+    filterStep' Nil A str n cs lt i = tt
+    filterStep' (prod lhs rhs sem :: prods') A str n cs lt subset with A ≟n lhs
+    ... | yes refl =
+      subst (λ S -> wp _ S _ _) (sym (unfold->>= (buildParser rhs) (λ f -> Pure (f sem)) fromProductions n))
+      (wpToBind _ (unfold fromProductions (buildParser rhs) n) _ str (wp-monotone
+        (unfold fromProductions (buildParser rhs) n) _
+        (λ _ str' lt' -> lt')
+        (firstBuildingStep str n cs lt Nil rhs (subset ∈Head)))) ,
+      filterStep' prods' A str n cs lt λ i -> subset (∈Tail i)
+    ... | no ¬p =
+      filterStep' prods' A str n cs lt λ i -> subset (∈Tail i)
+\end{code}
 
 \section{Left factorisation?}
 In that proof, do we need to left factorise the language? In that case, can we say something about that operation?
