@@ -309,10 +309,10 @@ The correctness proof closely matches the structure of |match| (and by extension
 It uses the same recursion on |Regex| as in the definition of |match|.
 Since we make use of |allSplits| in the definition, we first give its correctness proof.
 \begin{code}
-  allSplitsCorrect : ∀ (xs : String) ->
+  allSplitsSound : ∀ (xs : String) ->
     wpNondetAll (allSplits xs) (λ _ -> ⊤)
-  allSplitsCorrect Nil = tt
-  allSplitsCorrect (x :: xs) = tt , wpBind (const ⊤) (allSplits xs) _ (allSplitsCorrect xs) _ λ _ _ -> tt
+  allSplitsSound Nil = tt
+  allSplitsSound (x :: xs) = tt , wpBind (const ⊤) (allSplits xs) _ (allSplitsSound xs) _ λ _ _ -> tt
 \end{code}
 Then, using |wpBind|, we incorporate this correctness proof in the correctness proof of |match|.
 Apart from having to introduce |wpBind|, the proof essentially follows automatically from the definitions.
@@ -327,7 +327,7 @@ Apart from having to introduce |wpBind|, the proof essentially follows automatic
   pf (Singleton x) (c :: Nil) P (preH , postH) | no ¬p = tt
   pf (Singleton x) (_ :: _ :: _) P (preH , postH) = tt
   pf (l · r) xs P ((preL , preR) , postH) =
-    wpBind (const ⊤) (allSplits xs) _ (allSplitsCorrect xs) P λ {(splitList ys zs refl) _ ->
+    wpBind (const ⊤) (allSplits xs) _ (allSplitsSound xs) P λ {(splitList ys zs refl) _ ->
     wpBind (Match l ys) (match l ys) _ (pf l ys _ (preL , λ _ -> id)) P λ mls lH ->
     wpBind (Match r zs) (match r zs) _ (pf r zs _ (preR , λ _ -> id)) P λ mrs rH ->
     postH (mls ++ mrs) (Concat lH rH)}
@@ -535,11 +535,11 @@ We can reuse exactly the same proof to show |allSplits| is correct,
 since we use the same semantics for the effects in |allSplits|.
 %if style == newcode
 \begin{code}
-  allSplitsCorrect : ∀ (xs : String) P ->
+  allSplitsSound : ∀ (xs : String) P ->
     (∀ (spl : SplitList xs) -> P spl) ->
     wpMatch (allSplits (∈Tail ∈Head) xs) P
-  allSplitsCorrect Nil P H = H _
-  allSplitsCorrect (x :: xs) P H = H _ , wpToBind (allSplits (∈Tail ∈Head) xs) _ (allSplitsCorrect xs (P ∘ addLHS x xs) (λ spl -> H (addLHS x xs spl)))
+  allSplitsSound Nil P H = H _
+  allSplitsSound (x :: xs) P H = H _ , wpToBind (allSplits (∈Tail ∈Head) xs) _ (allSplitsSound xs (P ∘ addLHS x xs) (λ spl -> H (addLHS x xs spl)))
 \end{code}
 %endif
 On the other hand, the correctness proof for |match| needs a bit of tweaking to deal with the difference in the recursive steps.
@@ -554,7 +554,7 @@ On the other hand, the correctness proof for |match| needs a bit of tweaking to 
   pf (Singleton c , (x :: Nil)) P (preH , postH) | no ¬p = tt
   pf (Singleton c , (_ :: _ :: _)) P (preH , postH) = tt
   pf ((l · r) , xs) P (preH , postH) = wpToBind (allSplits (∈Tail ∈Head) xs) _
-    (allSplitsCorrect xs _ (λ {(splitList lhs rhs refl) mls lH mrs rH -> postH _ (Concat lH rH)}))
+    (allSplitsSound xs _ (λ {(splitList lhs rhs refl) mls lH mrs rH -> postH _ (Concat lH rH)}))
   pf ((l ∣ r) , xs) P (preH , postH) = (λ o H -> postH _ (OrLeft H)) , (λ o H -> postH _ (OrRight H))
   pf (Mark n r , xs) P (preH , postH) = λ o H -> postH (n :: o) (Mark H)
 \end{code}
@@ -741,6 +741,13 @@ First we show that |d r /d x| matches strings |xs| such that |r| matches |x :: x
   derivativeCorrect (Mark n r) x xs .(n :: _) (Mark m) = Mark (derivativeCorrect _ _ _ _ m)
 \end{code}
 
+The only missing step is that |allSplits| returns all possible splittings of a string.
+\begin{code}
+  allSplitsComplete : ∀ {a} (ys zs : List a) P -> wpMatch (allSplits (∈Tail ∈Head) (ys ++ zs)) P -> P (splitList ys zs refl)
+  allSplitsComplete Nil Nil P H = H
+  allSplitsComplete Nil (x :: zs) P (fst , snd) = fst
+  allSplitsComplete (y :: ys) zs P (fst , snd) = allSplitsComplete ys zs (λ spl -> P (addLHS y (ys ++ zs) spl)) (wpFromBind (allSplits _ (ys ++ zs)) _ snd)
+\end{code}
 \begin{code}
   refinement : ∀ r xs -> wpMatch (match ∈Head (∈Tail ∈Head) (r , xs)) ⊑ wpMatch (dmatch ∈Head (∈Tail ∈Head) (r , xs))
   refinement Empty Nil P H = tt
@@ -760,10 +767,16 @@ First we show that |d r /d x| matches strings |xs| such that |r| matches |x :: x
   refinement (l · r) Nil P H | no ¬pl | yes (mr , pr) = tt
   refinement (l · r) Nil P H | no ¬pl | no ¬pr = tt
   refinement (l · r) (x :: xs) P (fst , snd) o H with ε? l
-  refinement (l · r) (x :: xs) P (fst , snd) o (OrLeft (Concat {ys = ys} {zs} Hl Hr)) | yes p = {!consequence (allSplits (∈Tail ∈Head) (x :: xs)) _!}
+  refinement (l · r) (x :: xs) P (fst , snd) o (OrLeft (Concat {ys = ys} {zs} Hl Hr)) | yes p =
+    allSplitsComplete ys zs _
+      (wpFromBind (allSplits (∈Tail ∈Head) (ys ++ zs)) _ (wpFromBind (allSplits (∈Tail ∈Head) (ys ++ zs) >>= _) _ snd))
+      _ (derivativeCorrect _ _ _ _ Hl) _ Hr
   refinement (l · r) (x :: xs) P (fst , snd) o (OrRight (Concat Hl Hr)) | yes p with ε-izeGivesEpsilon _ _ _ Hl
   ... | refl = fst _ (ε-izeCorrect _ _ _ Hl) _ (derivativeCorrect _ _ _ _ Hr)
-  refinement (l · r) (x :: xs) P (fst , snd) o (Concat Hl H2) | no ¬p = {!allSplitsCorrect!}
+  refinement (l · r) (x :: xs) P (fst , snd) o (Concat {ys = ys} {zs} Hl Hr) | no ¬p =
+    allSplitsComplete ys zs _
+    (wpFromBind (allSplits (∈Tail ∈Head) (ys ++ zs)) _ (wpFromBind (allSplits (∈Tail ∈Head) (ys ++ zs) >>= _) _ snd))
+    _ (derivativeCorrect _ _ _ _ Hl) _ Hr
   refinement (l ∣ r) Nil P (fst , snd) with ε? l | ε? r
   refinement (l ∣ r) Nil P (fst , snd) | yes (ml , pl) | yes (mr , pr) = fst ml pl
   refinement (l ∣ r) Nil P (fst , snd) | yes (ml , pl) | no ¬pr = fst ml pl
