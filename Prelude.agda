@@ -20,7 +20,7 @@ _∘_ : ∀ {l l' l''} {a : Set l} {b : Set l'} {c : Set l''} ->
 f ∘ g = λ x → f (g x)
 
 open import Relation.Binary.PropositionalEquality public
-  hiding (preorder)
+  hiding (Extensionality; preorder)
   renaming ([_] to [[[_]]])
 infix 1 _==_
 _==_ = _≡_
