@@ -321,18 +321,22 @@ The |wpFree|-based semantics completely unfolds the left hand side,
 before it can talk about the right hand side.
 Whenever our matcher makes use of recursion on the left hand side of a |_>>=_| (as we do in |allSplits| and in the cases of |l · r| and |l ∣ r|),
 we cannot make progress in our proof without reducing this left hand side to a recursion-less expression.
-We solve this by using the following lemma to replace the left hand side with a postcondition.
+We need a lemma relating the semantics of program composition to the semantics of individual programs,
+which is also known as the law of consequence for traditional predicate transformer semantics.\todo{cite?}
 \begin{code}
-  wpBind : ∀ {a b} post (mx : Free ENondet a) (f : a -> Free ENondet b) ->
-    wpNondetAll mx post ->
-    ∀ P -> (∀ x -> post x -> wpNondetAll (f x) P) ->
-    wpNondetAll (mx >>= f) P
-  wpBind post (Pure x) f mxH P postH = postH x mxH
-  wpBind post (Step Fail k) f mxH P postH = mxH
-  wpBind post (Step Choice k) f (mxHt , mxHf) P postH = wpBind post (k True) f mxHt P postH , wpBind post (k False) f mxHf P postH
+  consequence : ∀ {a b es P} pt (mx : Free es a) (f : a -> Free es b) ->
+    wpFree pt mx (λ x -> wpFree pt (f x) P) == wpFree pt (mx >>= f) P
+  consequence pt (Pure x) f = refl
+  consequence pt (Step c k) f = cong (pt c) (extensionality λ x -> consequence pt (k x) f)
+
+  wpToBind : ∀ {a b es pt P} (mx : Free es a) (f : a -> Free es b) ->
+    wpFree pt mx (λ x -> wpFree pt (f x) P) -> wpFree pt (mx >>= f) P
+  wpToBind {pt = pt} mx f H = subst id (consequence pt mx f) H
+
+  wpFromBind : ∀ {a b es pt P} (mx : Free es a) (f : a -> Free es b) ->
+    wpFree pt (mx >>= f) P -> wpFree pt mx (λ x -> wpFree pt (f x) P)
+  wpFromBind {pt = pt} mx f H = subst id (sym (consequence pt mx f)) H
 \end{code}
-This lemma is a specialization of the left compositionality property,
-which states that we can refine on the left hand side of a bind.\todo{cite?}
 
 The correctness proof closely matches the structure of |match| (and by extension |allSplits|).
 It uses the same recursion on |Regex| as in the definition of |match|.
@@ -342,10 +346,10 @@ Since we make use of |allSplits| in the definition, we first give its correctnes
     wpSpec [[ ⊤ , (λ {(ys , zs) → xs == ys ++ zs})]] ⊑ wpNondetAll (allSplits xs)
   allSplitsSound Nil        P (fst , snd) = snd _ refl
   allSplitsSound (x :: xs)  P (fst , snd) = snd _ refl ,
-    wpBind _ (allSplits xs) _ (allSplitsSound xs _ (tt , λ _ → id)) P ?
+    wpToBind (allSplits xs) _ (allSplitsSound xs _ (tt , (λ {(ys , zs) H → snd _ (cong (x ::_) H)})))
 \end{code}
-Then, using |wpBind|, we incorporate this correctness proof in the correctness proof of |match|.
-Apart from having to introduce |wpBind|, the proof essentially follows automatically from the definitions.
+Then, using |wpToBind|, we incorporate this correctness proof in the correctness proof of |match|.
+Apart from having to introduce |wpToBind|, the proof essentially follows automatically from the definitions.
 \begin{code}
   matchSound : ∀ r xs -> wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)
   matchSound Empty xs P (preH , postH) = tt
@@ -356,12 +360,13 @@ Apart from having to introduce |wpBind|, the proof essentially follows automatic
   matchSound (Singleton x) (c :: Nil) P (preH , postH) | yes refl = postH _ Singleton
   matchSound (Singleton x) (c :: Nil) P (preH , postH) | no ¬p = tt
   matchSound (Singleton x) (_ :: _ :: _) P (preH , postH) = tt
-  matchSound (l · r) xs P (preH , postH) = ? {- wpBind (allSplits xs) _ P _
-    (allSplitsSound xs _ (_ , (λ {(ys , zs) splitH y lH z rH → postH (y , z)
-    (coerce (cong (λ xs → Match _ xs _) (sym splitH)) (Concat lH rH))}))) -}
-  matchSound (l ∣ r) xs P ((preL , preR) , postH) = ? {-
-    matchSound l xs _ (preL , λ o x -> postH o (OrLeft x)) ,
-    matchSound r xs _ (preR , λ o x -> postH o (OrRight x)) -}
+  matchSound (l · r) xs P ((preL , preR) , postH) = wpToBind (allSplits xs) _ (allSplitsSound xs _ (tt ,
+    λ {(ys , zs) splitH → wpToBind (match l ys) _ (matchSound l ys _ (preL ,
+    λ y lH → wpToBind (match r zs) _ ((matchSound r zs _ (preR ,
+    λ z rH → postH (y , z) (subst (λ xs → Match _ xs _) (sym splitH) (Concat lH rH)))))))}))
+  matchSound (l ∣ r) xs P ((preL , preR) , postH) =
+    wpToBind (match l xs) _ (matchSound l xs _ (preL , λ _ lH → postH _ (OrLeft lH))) ,
+    wpToBind (match r xs) _ (matchSound r xs _ (preR , λ _ rH → postH _ (OrRight rH)))
   matchSound (r *) xs P (() , postH)
 \end{code}
 
@@ -436,9 +441,7 @@ We can define the monadic bind |_>>=_| in the same way as in the previous defini
 %endif
 We also to make a small modification to the smart constructors for nondeterminism,
 since they now need to keep track of their position within a list of effects.
-Most of the bookkeeping can be offloaded to Agda's instance argument solver,
-as long as we indic
-\todo{Use Agda's instance arguments for |iND| and |iRec| instead of explicit arguments? Might make it a bit more straightforward to write code with it, but apparently the solver is not always smart enough to use them...}
+Most of the bookkeeping can be offloaded to Agda's instance argument solver.
 \begin{code}
   fail : ∀ {a es} ⦃ iND : ENondet ∈ es ⦄ -> Free es a
   fail ⦃ iND ⦄ = Step iND Fail magic
@@ -525,7 +528,7 @@ we can define a predicate transformer:
 \begin{code}
   ptRec : ∀ {I : Set} {O : I -> Set} -> ((i : I) -> O i -> Set) -> PT (ERec I O)
   PT.pt (ptRec R) i P = ∀ o -> R i o -> P o
-  PT.mono (ptRec R) = ?
+  PT.mono (ptRec R) c P P' imp asm o h = imp _ (asm _ h)
 \end{code}
 For example, the |Match| relation serves as a specification for the |match| function.
 If we use |ptRec R| as a predicate transformer to check that a recursive function satisfies the relation |R|,
@@ -553,15 +556,15 @@ Now we are able to handle the Kleene star:
   match ((Singleton c) , (_ :: _ :: _)) = fail
   match ((l · r) , xs) = do
     (ys , zs) <- allSplits xs
-    y <- call (l , ys)
-    z <- call (r , zs)
+    y <- call (hiddenInstance(∈Head)) (l , ys)
+    z <- call (hiddenInstance(∈Head)) (r , zs)
     Pure (y , z)
   match ((l ∣ r) , xs) = choice
-    (Inl <$> call (l , xs))
-    (Inr <$> call (r , xs))
+    (Inl <$> call (hiddenInstance(∈Head)) (l , xs))
+    (Inr <$> call (hiddenInstance(∈Head)) (r , xs))
   match ((r *) , Nil) = Pure Nil
   match ((r *) , xs@(_ :: _)) = do
-    (y , ys) <- call ((r · (r *)) , xs)
+    (y , ys) <- call (hiddenInstance(∈Head)) ((r · (r *)) , xs)
     Pure (y :: ys)
 \end{code}
 
@@ -572,7 +575,14 @@ As discussed, we first need to give the specification for |match| before we can 
   ptAll : PT ENondet
   PT.pt ptAll Fail P = ⊤
   PT.pt ptAll Choice P = P True ∧ P False
-  PT.mono ptAll = ?
+  PT.mono ptAll Fail P P' imp asm = asm
+  PT.mono ptAll Choice P P' imp (fst , snd) = imp _ fst , imp _ snd
+  ptAny : PT ENondet
+  PT.pt ptAny Fail P = ⊥
+  PT.pt ptAny Choice P = P True ∨ P False
+  PT.mono ptAny Fail P P' imp asm = asm
+  PT.mono ptAny Choice P P' imp (Inl asm) = Inl (imp _ asm)
+  PT.mono ptAny Choice P P' imp (Inr asm) = Inr (imp _ asm)
 \end{code}
 %endif
 \begin{code}
@@ -590,18 +600,18 @@ we can use the specification of |match| directly,
 without having to use the following rule of |consequence| in between.
 Unfortunately, we still need |consequence| to deal with the call to |allSplits|.
 \begin{code}
-  consequence : ∀ {a b es pts P} (mx : Free es a) (f : a -> Free es b) ->
+  consequence : ∀ {a b es P} pts (mx : Free es a) (f : a -> Free es b) ->
     wpFree pts mx (λ x -> wpFree pts (f x) P) == wpFree pts (mx >>= f) P
-  consequence (Pure x) f = refl
-  consequence (Step i c k) f = cong (lookupPT _ i c) (extensionality λ x -> consequence (k x) f)
+  consequence pts (Pure x) f = refl
+  consequence pts (Step i c k) f = cong (lookupPT pts i c) (extensionality λ x -> consequence pts (k x) f)
 
   wpToBind : ∀ {a b es pts P} (mx : Free es a) (f : a -> Free es b) ->
     wpFree pts mx (λ x -> wpFree pts (f x) P) -> wpFree pts (mx >>= f) P
-  wpToBind mx f H = subst id (consequence mx f) H
+  wpToBind {pts = pts} mx f H = subst id (consequence pts mx f) H
 
   wpFromBind : ∀ {a b es pts P} (mx : Free es a) (f : a -> Free es b) ->
     wpFree pts (mx >>= f) P -> wpFree pts mx (λ x -> wpFree pts (f x) P)
-  wpFromBind mx f H = subst id (sym (consequence mx f)) H
+  wpFromBind {pts = pts} mx f H = subst id (sym (consequence pts mx f)) H
 \end{code}
 
 We can reuse exactly the same proof to show |allSplits| is correct,
@@ -612,7 +622,7 @@ since we use the same semantics for the effects in |allSplits|.
     wpSpec [[ ⊤ , (λ {(ys , zs) → xs == ys ++ zs})]] ⊑ wpMatch (allSplits (hiddenInstance(∈Tail ∈Head)) xs)
   allSplitsSound Nil        P (fst , snd) = snd _ refl
   allSplitsSound (x :: xs)  P (fst , snd) = snd _ refl ,
-    ? -- wpToBind (allSplits (hiddenInstance(∈Tail ∈Head)) xs) (allSplitsSound xs _ (tt , (λ {(ys , zs) H → snd _ (cong (x ::_) H)})))
+    wpToBind (allSplits xs) _ (allSplitsSound xs _ (tt , λ {(ys , zs) H → snd _ (cong (x ::_) H)}))
 \end{code}
 %endif
 On the other hand, the correctness proof for |match| needs a bit of tweaking to deal with the difference in the recursive steps.
@@ -626,9 +636,9 @@ On the other hand, the correctness proof for |match| needs a bit of tweaking to 
   matchSound (Singleton c , (.c :: Nil))    P (preH , postH) | yes refl = postH _ Singleton
   matchSound (Singleton c , (x :: Nil))     P (preH , postH) | no ¬p = tt
   matchSound (Singleton c , (_ :: _ :: _))  P (preH , postH) = tt
-  matchSound ((l · r) , xs) P (preH , postH) = ? {- coerce (sym (fold-bind (allSplits (hiddenInstance(∈Tail ∈Head)) xs) _ P _))
+  matchSound ((l · r) , xs) P (preH , postH) = wpToBind (allSplits xs) _
     (allSplitsSound xs _ (_ , (λ {(ys , zs) splitH y lH z rH → postH (y , z)
-      (coerce (cong (λ xs → Match _ xs _) (sym splitH)) (Concat lH rH))}))) -}
+    (coerce (cong (λ xs → Match _ xs _) (sym splitH)) (Concat lH rH))})))
   matchSound ((l ∣ r) , xs) P (preH , postH) =
     (λ o H -> postH _ (OrLeft H)) ,
     (λ o H -> postH _ (OrRight H))
@@ -740,7 +750,7 @@ while for a non-empty string we use the derivative to perform a recursive call.
   dmatch (r , Nil) with matchEpsilon r
   ... | yes (ms , _)  = Pure ms
   ... | no ¬p         = fail
-  dmatch (r , (x :: xs)) = integralTree r <$> call ((d r /d x) , xs)
+  dmatch (r , (x :: xs)) = integralTree r <$> call (hiddenInstance(∈Head)) ((d r /d x) , xs)
 \end{code}
 
 Since |dmatch| always consumes a character before going in recursion, we can easily prove that each recursive call only leads to finitely many other calls.
@@ -762,21 +772,6 @@ However, this mixes the concepts of correctness and termination.
 We want to see that the computation terminates with some output, without caring about which output this is.
 Thus, we should only have a trivial postcondition |λ _ -> ⊤|.
 We formalize this idea in the |terminates-in| predicate.
-%if style == newcode
-\begin{code}
-  {-
-  ∈-++ : ∀ {a x} {xs ys : List a} -> x ∈ ys -> x ∈ (xs ++ ys)
-  ∈-++ {xs = Nil} i = i
-  ∈-++ {xs = x :: xs} i = ∈Tail (∈-++ i)
-
-  repeat : ∀ {a : Set} -> Nat -> (a -> a) -> a -> a
-  repeat Zero f x = x
-  repeat (Succ n) f x = repeat n f (f x) -- or |f (repeat n f x)| ?
-
-  open import Data.Nat using (_+_; _≤_)
-  -}
-\end{code}
-%endif
 \begin{code}
   terminates-in : (Forall(C R es a)) (pts : PTs es) (f : (RecArr C es R)) (S : Free (eff C R :: es) a) → Nat → Set
   terminates-in pts f (Pure x) n = ⊤
@@ -874,7 +869,7 @@ that |allSplits| returns all possible splittings of a string.
 \begin{code}
   allSplitsComplete Nil Nil .Nil P H refl = H
   allSplitsComplete (x :: xs) Nil .(x :: xs) P H refl = Pair.fst H
-  allSplitsComplete .(x :: ys ++ zs) (x :: ys) zs P H refl = allSplitsComplete (ys ++ zs) ys zs (λ {(ys' , zs') → P ((x :: ys') , zs')}) {! (coerce (fold-bind (allSplits ⦃ ∈Tail ∈Head ⦄ (ys ++ zs)) _ P _) (Pair.snd H)) !} refl
+  allSplitsComplete .(x :: ys ++ zs) (x :: ys) zs P H refl = allSplitsComplete (ys ++ zs) ys zs (λ {(ys' , zs') → P ((x :: ys') , zs')}) (wpFromBind (allSplits (ys ++ zs)) _ (Pair.snd H) ) refl
 \end{code}
 %endif
 The proof mirrors |allSplits|, performing induction on |xs|.
@@ -908,36 +903,29 @@ Therefore, we omit the proof.
   dmatchSound (l · r)        Nil             P H | yes (ml , pl) | no ¬pr = tt
   dmatchSound (l · r)        Nil             P H | no ¬pl | yes (mr , pr) = tt
   dmatchSound (l · r)        Nil             P H | no ¬pl | no ¬pr = tt
-  dmatchSound (l · r)        (x :: xs)       P (fst , snd) = ?
-  {-
   dmatchSound (l · r)        (x :: xs)       P (fst , snd) with matchEpsilon l
-  dmatchSound (l · r)        (x :: xs)       P (fst , snd) o (OrLeft (Concat (hidden(ys = ys)) (hidden(zs)) Hl Hr)) | yes p =
-    allSplitsComplete (x :: xs) (x :: ys) zs _
-      ? -- (fst , coerce (fold-bind (allSplits (hiddenInstance(∈Tail ∈Head)) (ys ++ zs) >>= _) _ P _) snd)
-      refl _ (derivativeCorrect _ Hl) _ Hr
-  dmatchSound (l · r)        (x :: xs)       P (fst , snd) o (OrRight H) | yes (y , Hl)
-    = fst _ Hl _ (integralTreeCorrect r x xs _ H)
-  dmatchSound (l · r)        (x :: xs)       P (fst , snd) o (Concat (hidden(ys = ys)) (hidden(zs)) Hl Hr) | no ¬p =
-    allSplitsComplete (x :: xs) (x :: ys) zs _
-      ? -- (fst , (coerce (fold-bind (allSplits (hiddenInstance(∈Tail ∈Head)) (ys ++ zs) >>= _) _ P _) snd))
-      refl _ (derivativeCorrect _ Hl) _ Hr
-  -}
+  ... | yes (ml , pl) = λ {
+    (Inl (tl , tr)) (OrLeft (Concat {ys = ys} {zs = zs} lH rH)) →
+      allSplitsComplete (x :: xs) (x :: ys) zs
+      (λ { (ys , zs) → wpMatch (call ⦃ ∈Head ⦄ (l , ys) >>= λ y → call ⦃ ∈Head ⦄ (r , zs) >>= λ z → Pure (y , z)) P})
+      (wpFromBind {pts = ptRec matchSpec :: ptAll :: Nil} (allSplits ⦃ ∈Tail ∈Head ⦄ (x :: ys ++ zs)) _ (fst , snd))
+      refl _ (derivativeCorrect l lH) _ rH ;
+    (Inr t) (OrRight h) → fst _ pl _ (derivativeCorrect r h) }
+  ... | no ¬p = λ {(y , z) (Concat {ys = ys} {zs = zs} lH rH) →
+    allSplitsComplete (x :: xs) (x :: ys) zs
+    (λ { (ys , zs) → wpMatch (call ⦃ ∈Head ⦄ (l , ys) >>= λ y → call ⦃ ∈Head ⦄ (r , zs) >>= λ z → Pure (y , z)) P})
+    (wpFromBind {pts = ptRec matchSpec :: ptAll :: Nil} (allSplits ⦃ ∈Tail ∈Head ⦄ (x :: ys ++ zs)) _ (fst , snd))
+    refl _ (derivativeCorrect l lH) _ rH}
   dmatchSound (l ∣ r)        Nil             P (fst , snd) with matchEpsilon l | matchEpsilon r
   dmatchSound (l ∣ r)        Nil             P (fst , snd) | yes (ml , pl) | yes (mr , pr) = fst ml pl
   dmatchSound (l ∣ r)        Nil             P (fst , snd) | yes (ml , pl) | no ¬pr = fst ml pl
   dmatchSound (l ∣ r)        Nil             P (fst , snd) | no ¬pl | yes (mr , pr) = snd mr pr
   dmatchSound (l ∣ r)        Nil             P (fst , snd) | no ¬pl | no ¬pr = tt
-  dmatchSound (l ∣ r)        (x :: xs)       P (fst , snd) = ?
-  {-
-  dmatchSound (l ∣ r)        (x :: xs)       P (fst , snd) o (OrLeft H)   = fst _ (derivativeCorrect _ H)
-  dmatchSound (l ∣ r)        (x :: xs)       P (fst , snd) o (OrRight H)  = snd _ (derivativeCorrect _ H)
-  -}
+  dmatchSound (l ∣ r) (x :: xs) P (fst , snd) .(Inl _) (OrLeft H) = fst _ (derivativeCorrect l H)
+  dmatchSound (l ∣ r) (x :: xs) P (fst , snd) .(Inr _) (OrRight H) = snd _ (derivativeCorrect r H)
   dmatchSound (r *)          Nil             P H = H
-  dmatchSound (r *)          (x :: xs)       P H = ?
-  {-
   dmatchSound (r *)          (x :: xs)       P H ms (Concat ml mr)
     = H _ (Concat (derivativeCorrect _ ml) mr)
-  -}
 \end{code}
 %endif
 
@@ -948,18 +936,17 @@ only the first tree that it encounters.
 Still, we can express the property that |dmatch| finds a parse tree if it exists.
 In other words, we will show that if there is a valid parse tree, |dmatch| returns any parse tree (and this is a valid tree by |dmatchSound|).
 To express that |dmatch| returns something, we use a trivially true postcondition,
-and replace the |ptAll| semantics for nondeterminism with |ptAny|:
+and replace the demonic choice of the |ptAll| semantics with the angelic choice of |ptAny|:
 \begin{code}
   dmatchComplete : ∀ r xs y →
-    Match r xs y → wpFree (ptRec matchSpec :: ptAll :: Nil) (dmatch (hiddenInstance(∈Head)) (r , xs)) (λ _ → ⊤)
+    Match r xs y → wpFree (ptRec matchSpec :: ptAny :: Nil) (dmatch (hiddenInstance(∈Head)) (r , xs)) (λ _ → ⊤)
 \end{code}
 The proof is short, since |dmatch| can only |fail| when it encounters an empty string and a regex that does not match the empty string, contradicting the assumption immediately:
 \begin{code}
   dmatchComplete r Nil y H with matchEpsilon r
   ... | yes p = tt
-  ... | no ¬p = ? -- ¬p (_ , H)
-  dmatchComplete r (x :: xs) = ?
-  -- dmatchComplete r (x :: xs) y H y' H' = tt
+  ... | no ¬p = ¬p (_ , H)
+  dmatchComplete r (x :: xs) y H y' H' = tt
 \end{code}
 Here we have demonstrated the power of predicate transformer semantics for effects:
 by separating syntax and semantics, we can easily describe different aspects (soundness and completeness) of the one definition of |dmatch|.
@@ -1229,8 +1216,9 @@ Using |ptAll|'s semantics for the |Fail| command gives the following semantics f
   PTS.mono ptParse Parse P Q imp (x :: xs) asm = imp x xs asm
   ptAll : ∀ {s} -> PTS s ENondet
   PTS.pt ptAll Fail P _ = ⊤
-  PTS.pt ptAll Choice P s = (P True s) ∧ (P False s)
-  PTS.mono ptAll = ?
+  PTS.pt ptAll Choice P s = P True s ∧ P False s
+  PTS.mono ptAll Fail P Q imp t tt = tt
+  PTS.mono ptAll Choice P Q imp t (fst , snd) = imp _ _ fst , imp _ _ snd
 \end{code}
 %endif
 
@@ -1308,7 +1296,7 @@ and making a recursive |call| to |fromProductions| for each nonterminal symbol.
 \begin{code}
   buildParser Nil = Pure id
   buildParser (Inl x  :: xs) = exact tt x >>= λ _ -> buildParser xs
-  buildParser (Inr B  :: xs) = call B >>= (λ x -> buildParser xs >>= λ o -> Pure λ f -> o (f x))
+  buildParser (Inr B  :: xs) = call (hiddenInstance(∈Head)) B >>= (λ x -> buildParser xs >>= λ o -> Pure λ f -> o (f x))
 \end{code}
 Finally, |exact| uses the |parse| command to check that the next character in the string is as expected,
 and |fail|s if this is not the case.
@@ -1358,7 +1346,7 @@ module Correctness (gs : GrammarSymbols) where
 \begin{code}
   ptRec : ∀ {a : Set} {I : Set} {O : I -> Set} -> ((i : I) -> a -> O i -> a -> Set) -> PTS a (ERec I O)
   PTS.pt (ptRec R) i P s = ∀ o s' -> R i s o s' -> P o s'
-  PTS.mono (ptRec R) = ?
+  PTS.mono (ptRec R) c P Q imp t asm o t' h = imp _ _ (asm _ _ h)
 
   record StateSpec (s a : Set) : Set where
     constructor [[_,_]]
@@ -1403,14 +1391,14 @@ This gives the partial correctness term as defined below
   consequence pts (Pure x) f t = refl
   consequence pts (Step i c k) f t = cong (λ P -> lookupPTS pts i c P t) (extensionality λ x -> extensionality λ t -> consequence pts (k x) f t)
 
-  wpToBind : ∀ {a b s es} (pts : PTSs s es) {P} (mx : Free es a) (f : a -> Free es b) ->
+  wpToBind : ∀ {a b s es} {pts : PTSs s es} {P} (mx : Free es a) (f : a -> Free es b) ->
     ∀ t -> wp pts mx (λ x t -> wp pts (f x) P t) t -> wp pts (mx >>= f) P t
-  wpToBind pts mx f t H = subst id (consequence pts mx f t) H
+  wpToBind {pts = pts} mx f t H = subst id (consequence pts mx f t) H
 
-  wpFromBind : ∀ {a b s es} (pts : PTSs s es) {P} (mx : Free es a) (f : a -> Free es b) ->
+  wpFromBind : ∀ {a b s es} {pts : PTSs s es} {P} (mx : Free es a) (f : a -> Free es b) ->
     ∀ t -> wp pts (mx >>= f) P t -> wp pts mx (λ x t -> wp pts (f x) P t) t
-  wpFromBind pts mx f t H = subst id (sym (consequence pts mx f t)) H
-  partialCorrectness prods A P xs H = ? -- filterStep prods A id P xs H
+  wpFromBind {pts = pts} mx f t H = subst id (sym (consequence pts mx f t)) H
+  partialCorrectness prods A P xs H = filterStep prods id A P xs H
     where
     open FromProductions gs
 \end{code}
@@ -1429,14 +1417,16 @@ Thus, we want to prove a lemma with a type as follows:
       wpFromProd prods (buildParser prods xs) P str
 \end{code}
 The lemma can be proved by reproducing the case distinctions used to define |buildParser|;
-there is no complication apart from having to use the |fold-bind| lemma to deal with the |_>>=_| operator in a few places.
+there is no complication apart from having to use the |wpToBind| lemma to deal with the |_>>=_| operator in a few places.
 \begin{code}
     parseStep A Nil P t H = H id t Done
     parseStep A (Inl x :: xs) P Nil H = tt
     parseStep A (Inl x :: xs) P (x' :: t) H with x ≟ x'
     ... | yes refl = parseStep A xs P t λ o t' H' -> H o t' (Next H')
     ... | no ¬p = tt
-    parseStep A (Inr B :: xs) P t H = ? -- = λ o t' Ho → subst (hiddenArg(λ f → f t')) (sym (fold-bind (buildParser prods xs) _ P _)) (parseStep A xs _ t' λ o' t'' Ho' → H _ _ (Call Ho Ho'))
+    parseStep A (Inr B :: xs) P t H o t' Ho =
+      wpToBind (buildParser prods xs) _ _
+        (parseStep A xs _ t' λ o' str' Ho' → H _ _ (Call Ho Ho'))
 \end{code}
 
 To combine the |parseStep| for each of the productions in the nondeterministic choice,
@@ -1447,7 +1437,7 @@ Additionally, we must also make sure that |prods'| is indeed a sublist,
 since using an incorrect production rule in the |parseStep| will result in an invalid result.
 Thus, we parametrise |filterStep| by a list |prods'| and a proof that it is a sublist of |prods|.
 Again, the proof uses the same distinction as |fromProductions| does,
-and uses the |fold-bind| lemma to deal with the |_>>=_| operator.
+and uses the |wpToBind| lemma to deal with the |_>>=_| operator.
 \begin{code}
     filterStep : ∀ prods' -> ((Forall(p)) p ∈ prods' -> p ∈ prods) ->
       ∀ A -> wpSpec [[ (hiddenConst(⊤)) , parserSpec prods A ]] ⊑ wpFromProd prods
@@ -1455,7 +1445,7 @@ and uses the |fold-bind| lemma to deal with the |_>>=_| operator.
     filterStep Nil subset A P xs H = tt
     filterStep (prod lhs rhs sem :: prods') subset A P xs H with A ≟n lhs
     filterStep (prod .A rhs sem :: prods') subset A P xs (_ , H) | yes refl
-      = ? -- subst (λ f → f xs) (sym (fold-bind (buildParser prods rhs) _ P _))
+      = wpToBind (buildParser prods rhs) _ _
       (parseStep A rhs _ xs λ o t' H' → H _ _ (Produce (subset ∈Head) H'))
       , filterStep prods' (subset ∘ ∈Tail) A P xs (_ , H)
     ... | no ¬p = filterStep prods' (subset ∘ ∈Tail) A P xs H
