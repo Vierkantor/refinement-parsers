@@ -82,7 +82,7 @@ This gives a monad, with the bind operator defined as follows:
 The easiest way to use effects is with smart constructors:
 \begin{code}
   fail : ∀ {a} -> Free ENondet a
-  fail {a} = Step Fail magic
+  fail {a} = Step Fail λ ()
   choice : ∀ {a} -> Free ENondet a -> Free ENondet a -> Free ENondet a
   choice S₁ S₂ = Step Choice λ b -> if b then S₁ else S₂
 \end{code}
@@ -447,7 +447,7 @@ since they now need to keep track of their position within a list of effects.
 Most of the bookkeeping can be offloaded to Agda's instance argument solver.
 \begin{code}
   fail : ∀ {a es} ⦃ iND : ENondet ∈ es ⦄ -> Free es a
-  fail ⦃ iND ⦄ = Step iND Fail magic
+  fail ⦃ iND ⦄ = Step iND Fail λ ()
   choice : ∀ {a es} ⦃ iND : ENondet ∈ es ⦄ -> Free es a -> Free es a -> Free es a
   choice ⦃ iND ⦄ S₁ S₂ = Step iND Choice λ b -> if b then S₁ else S₂
 
@@ -481,13 +481,11 @@ module Stateless where
   open Spec
 \end{code}
 %endif
-\todo{We introduce a type |PT| hwich includes a monotonicity requirement.}
 \begin{code}
   record PT (e : Effect) : Set where
     constructor mkPT
     field
       pt : (c : Effect.C e) → (Effect.R e c → Set) → Set
-      mono : ∀ c → (P P' : Effect.R e c → Set) → P ⊆ P' → pt c P → pt c P'
 
   data PTs : List Effect -> Set where
     Nil : PTs Nil
@@ -898,7 +896,7 @@ Therefore, we omit the proof.
   dmatchSound (Singleton c)  (x :: xs)       P H with x ≟ c
   dmatchSound (Singleton c)  (.c :: Nil)     P H | yes refl with c ≟ c
   dmatchSound (Singleton c)  (.c :: Nil)     P H | yes refl | yes refl = λ {o Epsilon -> H}
-  dmatchSound (Singleton c)  (.c :: Nil)     P H | yes refl | no ¬p = magic (¬p refl)
+  dmatchSound (Singleton c)  (.c :: Nil)     P H | yes refl | no ¬p = (λ ()) (¬p refl)
   dmatchSound (Singleton c)  (.c :: _ :: _)  P H | yes refl = λ o ()
   dmatchSound (Singleton c)  (_ :: _)        P H | no ¬p = λ o ()
   dmatchSound (l · r)        Nil             P H with matchEpsilon l | matchEpsilon r
@@ -1638,7 +1636,7 @@ If |k| is zero, we have consumed more than |length str| characters of |str|, als
     go A (_ :: _) (Succ k) (s≤s ltK) n cs H' (A' , str') (Adv (s≤s lt))
       = acc (go A' str' k (≤-trans lt ltK) bound Nil ≤-refl)
     go A str k ltK Zero cs H' (A' , str') (Rec lt cs')
-      = magic (<⇒≱ (H cs) (≤-trans H' (≤-reflexive (+-identityʳ _))))
+      = (λ ()) (<⇒≱ (H cs) (≤-trans H' (≤-reflexive (+-identityʳ _))))
     go A str k ltK (Succ n) cs H' (A' , str') (Rec lt c)
       = acc (go A' str' k (≤-trans lt ltK) n (c :: cs) (≤-trans H' (≤-reflexive (+-suc _ _))))
 \end{code}
