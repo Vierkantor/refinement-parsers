@@ -1,5 +1,8 @@
 \documentclass{llncs}
 
+\usepackage[style=alphabetic,natbib=true]{biblatex}
+\addbibresource{handlers.bib}
+
 %include agda.fmt
 %include refinement-parsers.fmt
 
@@ -23,8 +26,8 @@ P ⊆ Q = ∀ x -> P x -> Q x
 
 \title{Verified parsers using the refinement calculus and algebraic effects}
 \author{Tim Baanen \and Wouter Swierstra}
-\institute{Utrecht University
-\email{\{t.baanen@vu.nl,w.s.swierstra@uu.nl\}}}
+\institute{Vrije Universiteit Amsterdam, Utrecht University
+\email{\{t.baanen@@vu.nl,w.s.swierstra@@uu.nl\}}}
 %
 \maketitle              % typeset the header of the contribution
 
@@ -667,7 +670,7 @@ does not guarantee termination of the parser,
 we can instead perform recursion on the string to be parsed.
 To do this, we make use of the Brzozowski derivative.
 \begin{Def}[\cite{Brzozowski}]
-The \introTerm{Brzozowski derivative} of a formal language |L| with respect to a character |x| consists of all strings |xs| such that |x :: xs ∈ L|.
+The \emph{Brzozowski derivative} of a formal language |L| with respect to a character |x| consists of all strings |xs| such that |x :: xs ∈ L|.
 \end{Def}
 
 Importantly, if |L| is regular, so are all its derivatives.
@@ -784,7 +787,7 @@ Since |dmatch| always consumes a character before going in recursion,
 we can bound the number of recursive calls with the length of the input string.
 The proof goes by induction on this string.
 Unfolding the recursive |call| gives |(dmatch (d r /d x , xs) >>= (Pure ∘ integralTree)|,
-which we can rewrite in the lemma |terminates-fmap| using the associativity \meldTerm[monad laws]{monad law}.
+which we can rewrite in the lemma |terminates-fmap| using the associativity monad law.
 \begin{code}
   dmatchTerminates : (r : Regex) (xs : String) →
     terminates-in (ptAll :: Nil) (dmatch (hiddenInstance(∈Head)) ) (dmatch (hiddenInstance(∈Head)) (r , xs)) (length xs)
@@ -873,7 +876,7 @@ that |allSplits| returns all possible splittings of a string.
 \end{code}
 %endif
 The proof mirrors |allSplits|, performing induction on |xs|.
-Note that |allSplitsSound| and |allSplitsComplete| together show that |allSplits xs| is \meldTerm[equivalent!predicate transformers]{equivalent} to its specification |[[ ⊤ , λ {(ys , zs) -> xs == ys + zs}]]|,
+Note that |allSplitsSound| and |allSplitsComplete| together show that |allSplits xs| is equivalent to its specification |[[ ⊤ , λ {(ys , zs) -> xs == ys + zs}]]|,
 in the sense of the |_≡_| relation.
 
 Using the preceding lemmas, we can prove the partial correctness of |dmatch| by showing it refines |match|:
@@ -989,7 +992,7 @@ in the style of the Brzozowski derivative.
 This means we can decide whether a language |l| matches the empty string (as |matchEpsilon| does for regular languages),
 and for each character |x|, we can compute the derivative |d l /d x|,
 which contains exactly those |xs| such that |x :: xs| is in |l|.
-Packaging up these two operations into a record type gives the \introTerm{coinductive trie} representation
+Packaging up these two operations into a record type gives the \emph{coinductive trie} representation
 of a formal language, as described by \citet{coinductive-trie}.
 We augment the definition by including a list of the parser's output values for the empty string,
 instead of a Boolean stating whether the language contains the empty string.
@@ -1018,7 +1021,7 @@ or viewed in another way, since the |Trie| type needs to be nested arbitrarily d
 The sized types help Agda to check that certain definitions terminate.
 Despite being needed to ensure the |Trie| type is useful, the two complications do not play an important role in the remainder of the development.
 
-\begin{Ex}
+\begin{example}
 Let us look at two simple examples of definitions using the |Trie| type.
 The first definition, |emptyTrie|, represents the empty language.
 It does not contain the empty string, so |ε emptyTrie| is the empty list.
@@ -1038,7 +1041,7 @@ which is straightforward to write out.
   ε (t ∪t t') = ε t ++ ε t'
   d (t ∪t t') /d x = (d t /d x) ∪t (d t' /d x)
 \end{code}
-\end{Ex}
+\end{example}
 
 We can also take a very computational approach to languages,
 representing them by a parser.
@@ -1055,7 +1058,7 @@ since we first need to implement operations such as the union of a language or c
 The |Regex| representation of regular languages has such operations built-in,
 allowing us to have intuition on the level of grammar rather than operations.
 A class of languages that is more expressive than the regular languages,
-while remaining tractable in parsing is that of the \introTerm[context-free language]{context-free language}.
+while remaining tractable in parsing is that of the \emph{context-free language}.
 The expressiveness of context-free languages is enough to cover most programming languages used in practice~\cite{dragon-book}.
 We will represent context-free languages in Agda by giving a grammar in the style of \citet{dependent-grammar},
 in a similar way as we represent a regular language using an element of the |Regex| type.
@@ -1072,8 +1075,8 @@ record GrammarSymbols : Set where
     ⟦_⟧ : Nonterminal -> Set
     _≟n_ : Decidable {A = Nonterminal} _==_
 \end{code}
-The elements of the type |Char| are the \introTerm{terminal} symbols, for example characters or tokens.
-The elements of the type |Nonterminal| are the \introTerm{nonterminal} symbols, representing the language constructs.
+The elements of the type |Char| are the \emph{terminal} symbols, for example characters or tokens.
+The elements of the type |Nonterminal| are the \emph{nonterminal} symbols, representing the language constructs.
 As for |Char|, we also need to be able to decide the equality of nonterminals.
 The (disjoint) union of |Char| and |Nonterminal| gives all the symbols that we can use in defining the grammar.
 %if style == newcode
@@ -1093,7 +1096,7 @@ A production rule $A \to xs$ gives a way to expand the nonterminal |A| into a li
 such that successfully matching each symbol of |xs| with parts of a string
 gives a match of the string with |A|.
 Since matching a nonterminal symbol |B| with a (part of a) string results in a value of type |⟦ B ⟧|,
-a production rule for |A| is associated with a \introTerm{semantic function} that takes all values arising from submatches
+a production rule for |A| is associated with a \emph{semantic function} that takes all values arising from submatches
 and returns a value of type |⟦ A ⟧|,
 as expressed by the following type:
 \begin{code}
@@ -1222,7 +1225,7 @@ Using |ptAll|'s semantics for the |Fail| command gives the following semantics f
 \end{code}
 %endif
 
-\begin{Ex}
+\begin{example}
 With the predicate transformer semantics of |EParse|,
 we can define the language accepted by a parser in the |Free| monad as a predicate over strings:
 a string |xs| is in the language of a parser |S| if the postcondition ``all characters have been consumed'' is satisfied.
@@ -1235,7 +1238,7 @@ a string |xs| is in the language of a parser |S| if the postcondition ``all char
   xs ∈[ S ] = wp (ptAll :: ptParse :: Nil) S (λ _ -> empty?) xs
 \end{code}
 \vspace{-2 \baselineskip}
-\end{Ex}
+\end{example}
 
 \section{From abstract grammars to abstract parsers}
 We want to show that the effects |EParser| and |ENondet| are sufficient to parse any context-free grammar,
@@ -1474,7 +1477,7 @@ Since the position in the string and current nonterminal together fully determin
 it will not terminate.
 We need to ensure that the grammars passed to the parser do not allow for such loops.
 
-Intuitively, the condition on the grammars should be that they are not \introTerm[left recursion]{left-recursive},
+Intuitively, the condition on the grammars should be that they are not \emph{left-recursive},
 since in that case, the parser should always advance its position in the string before it encounters the same nonterminal.
 This means that the number of recursive calls to |fromProductions| is bounded
 by the length of the string times the number of different nonterminals occurring in the production rules.
@@ -1484,7 +1487,7 @@ a sequence of nonterminals $A, \dots, A_i, A_{i+1}, \dots, B$,
 such that for each adjacent pair $A_i, A_{i+1}$ in the chain, there is a production of the form $A_{i+1} \to B_1 B_2 \dots B_n A_i \dots$, where $B_1 \dots B_n$ are all nonterminals.
 In other words, we can advance the parser to $A$ starting in $B$ without consuming a character.
 Disallowing (unbounded) left recursion is not a limitation for our parsers:
-\citet{dependent-grammar} have shown that the \introTerm{left-corner transform}
+\citet{dependent-grammar} have shown that the \emph{left-corner transform}
 can transform left-recursive grammars into an equivalent grammar without left recursion.
 Moreover, they have implemented this transform, including formal verification, in Agda.
 In this work, we assume that the left-corner transform has already been applied if needed,
@@ -1532,7 +1535,7 @@ Now we say that a set of productions has no left recursion if all such chains ha
 If we have this bound on left recursion, we are able to prove termination,
 since each call to |fromProductions| will be made either after we have consumed an extra character,
 or it is a left-recursive step, of which there is an upper bound on the sequence.
-Thus, the relation |RecOrder| will work as a recursive \meldTerm{variant} for |fromProductions|:
+Thus, the relation |RecOrder| will work as a recursive variant for |fromProductions|:
 \begin{code}
   data RecOrder (prods : Productions) : (x y : Nonterminal × String) -> Set where
     Adv : (Forall(str str' A B)) length str < length str' → RecOrder prods (A , str) (B , str')
@@ -1544,10 +1547,10 @@ The petrol-driven semantics are based on a syntactic argument:
 we know a computation terminates because expanding the call tree will eventually result in no more |call|s.
 Termination can also be defined based on a well-foundedness argument,
 such as the size-change principle of Agda's termination checker.
-Thus, we want to say that a recursive definition is \meldTerm{well-founded}
+Thus, we want to say that a recursive definition is well-founded
 if all recursive calls are made to a smaller argument, according to a well-founded relation.
 \begin{Def}[\cite{aczel-acc}]
-In intuitionistic type theory, we say that a relation |_≺_| on a type |a| is well-founded if all elements |x : a| are \introTerm{accessible},
+In intuitionistic type theory, we say that a relation |_≺_| on a type |a| is well-founded if all elements |x : a| are \emph{accessible},
 which is defined by (well-founded) recursion to be the case if all elements in the downset of |x| are accessible.
 \begin{code}
   data Acc (hidden(a : Set)) (_≺_ : a → a → Set) : a → Set where
@@ -1560,13 +1563,13 @@ Since all inductive data types are well-founded,
 and the termination checker ensures that the argument to |acc| is a monotone function,
 there is a function from |x : a| to |Acc _≺_ x| if and only if |_≺_| is a well-founded relation in the set-theoretic sense.
 
-The condition that all calls are made to a smaller argument is related to the notion of a loop \introTerm{variant}
+The condition that all calls are made to a smaller argument is related to the notion of a loop \emph{variant}
 in imperative languages.
-While an \meldTerm{invariant} is a predicate that is true at the start and end of each looping step,
+While an invariant is a predicate that is true at the start and end of each looping step,
 the variant is a relation that holds between successive looping steps.
 \begin{Def}
 Given a recursive definition |f : RecArr I es O|,
-a relation |_≺_| on |C| is a recursive \introTerm{variant} if for each argument |c|,
+a relation |_≺_| on |C| is a recursive \emph{variant} if for each argument |c|,
 and each recursive call made to |c'| in the evaluation of |f c|,
 we have |c' ≺ c|.
 Formally:
@@ -1588,7 +1591,7 @@ We cannot derive the semantics in |variant| from the structure of |f|,
 since we do not yet know whether |f| terminates.
 Using |variant|, we can define another termination condition:
 \begin{Def}
-A recursive definition |f| is \introTerm[termination!well-founded]{well-founded} if it has a variant that is well-founded.
+A recursive definition |f| is \emph{well-founded} if it has a variant that is well-founded.
 \begin{code}
   record Termination (hidden(s es C R)) (pts : PTSs s (eff C R :: es)) (f : (RecArr C es R)) : Set where
     field
@@ -1740,3 +1743,5 @@ Having divided the proof into the three lemmas, the remainder is straightforward
 The proofs of the lemmas use induction on the production rule for |parseStepAdv| and |parseStepRec|,
 and induction on the list of rules for |filterStep|,
 and call each other as indicated.
+
+\end{document}
