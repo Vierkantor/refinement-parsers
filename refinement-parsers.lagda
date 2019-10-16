@@ -90,10 +90,10 @@ The easiest way to use effects is with smart constructors:
 To give specifications of programs that incorporate effects,
 we can use predicate transformers.
 \begin{code}
-  wpFree : {C : Set} {R : C -> Set} -> ((c : C) -> (R c -> Set) -> Set) ->
+  wp : {C : Set} {R : C -> Set} -> ((c : C) -> (R c -> Set) -> Set) ->
     {a : Set} -> Free (eff C R) a -> (a -> Set) -> Set
-  wpFree alg (Pure x) P = P x
-  wpFree alg (Step c k) P = alg c \x -> wpFree alg (k x) P
+  wp alg (Pure x) P = P x
+  wp alg (Step c k) P = alg c \x -> wp alg (k x) P
 \end{code}
 Interestingly, these predicate transformers are exactly the catamorphisms from |Free| to |Set|.
 
@@ -118,7 +118,7 @@ module NoCombination2 where
 \begin{code}
   wpNondetAll : {a : Set} -> Free ENondet a ->
     (a -> Set) -> Set
-  wpNondetAll S P = wpFree ptAll S P
+  wpNondetAll S P = wp ptAll S P
 \end{code}
 
 We use pre- and postconditions to give a specification for a program.
@@ -320,7 +320,7 @@ with respect to the type |Match|.
 
 If we now want to give a correctness proof with respect to these pre- and postconditions,
 we run into an issue in cases where the definition makes use of the |_>>=_| operator.
-The |wpFree|-based semantics completely unfolds the left hand side,
+The |wp|-based semantics completely unfolds the left hand side,
 before it can talk about the right hand side.
 Whenever our matcher makes use of recursion on the left hand side of a |_>>=_| (as we do in |allSplits| and in the cases of |l · r| and |l ∣ r|),
 we cannot make progress in our proof without reducing this left hand side to a recursion-less expression.
@@ -328,16 +328,16 @@ We need a lemma relating the semantics of program composition to the semantics o
 which is also known as the law of consequence for traditional predicate transformer semantics.\todo{cite?}
 \begin{code}
   consequence : ∀ {a b es P} pt (mx : Free es a) (f : a -> Free es b) ->
-    wpFree pt mx (λ x -> wpFree pt (f x) P) == wpFree pt (mx >>= f) P
+    wp pt mx (λ x -> wp pt (f x) P) == wp pt (mx >>= f) P
   consequence pt (Pure x) f = refl
   consequence pt (Step c k) f = cong (pt c) (extensionality λ x -> consequence pt (k x) f)
 
   wpToBind : ∀ {a b es pt P} (mx : Free es a) (f : a -> Free es b) ->
-    wpFree pt mx (λ x -> wpFree pt (f x) P) -> wpFree pt (mx >>= f) P
+    wp pt mx (λ x -> wp pt (f x) P) -> wp pt (mx >>= f) P
   wpToBind {pt = pt} mx f H = subst id (consequence pt mx f) H
 
   wpFromBind : ∀ {a b es pt P} (mx : Free es a) (f : a -> Free es b) ->
-    wpFree pt (mx >>= f) P -> wpFree pt mx (λ x -> wpFree pt (f x) P)
+    wp pt (mx >>= f) P -> wp pt mx (λ x -> wp pt (f x) P)
   wpFromBind {pt = pt} mx f H = subst id (sym (consequence pt mx f)) H
 \end{code}
 
@@ -493,7 +493,7 @@ module Stateless where
 \end{code}
 
 Given a such a list of predicate transformers,
-defining the semantics of an effectful program is a straightforward generalization of |wpFree|.
+defining the semantics of an effectful program is a straightforward generalization of |wp|.
 The |Pure| case is identical, and in the |Step| case we find the predicate transformer at the corresponding index to the effect index |i : e ∈ es| using the |lookupPT| helper function.
 \begin{code}
   lookupPT : ∀ {C R es} (pts : PTs es) (i : eff C R ∈ es) -> (c : C) -> (R c -> Set) -> Set
@@ -507,17 +507,17 @@ The |Pure| case is identical, and in the |Step| case we find the predicate trans
   lookupMono (pt :: pts) (∈Tail i) = lookupMono pts i
 \end{code}
 %endif
-This results in the following definition of |wpFree| for combinations of effects.
+This results in the following definition of |wp| for combinations of effects.
 \begin{code}
-  wpFree : forall {a es} (pts : PTs es) ->
+  wp : forall {a es} (pts : PTs es) ->
     Free es a -> (a -> Set) -> Set
-  wpFree pts (Pure x) P = P x
-  wpFree pts (Step i c k) P = lookupPT pts i c (λ x -> wpFree pts (k x) P)
+  wp pts (Pure x) P = P x
+  wp pts (Step i c k) P = lookupPT pts i c (λ x -> wp pts (k x) P)
 \end{code}
 
 In the new definition of |match|, we want to combine the effects of nondeterminism and general recursion.
 To verify this definition, we need to give its semantics,
-for which we need to give the list of predicate transformers to |wpFree|.
+for which we need to give the list of predicate transformers to |wp|.
 For nondeterminism we alread have the predicate transformer |ptAll|.
 However, it is not as easy to give a predicate transformer for general recursion,
 since the intended semantics of a recursive call depend
@@ -592,7 +592,7 @@ As discussed, we first need to give the specification for |match| before we can 
 
   wpMatch : (Forall(a)) Free (eff (Pair Regex String) (λ {(r , xs) -> tree r}) :: ENondet :: Nil) a ->
     (a -> Set) -> Set
-  wpMatch = wpFree (ptRec matchSpec :: ptAll :: Nil)
+  wpMatch = wp (ptRec matchSpec :: ptAll :: Nil)
 \end{code}
 
 In a few places, we use a recursive |call| instead of actual recursion.
@@ -602,16 +602,16 @@ without having to use the following rule of |consequence| in between.
 Unfortunately, we still need |consequence| to deal with the call to |allSplits|.
 \begin{code}
   consequence : ∀ {a b es P} pts (mx : Free es a) (f : a -> Free es b) ->
-    wpFree pts mx (λ x -> wpFree pts (f x) P) == wpFree pts (mx >>= f) P
+    wp pts mx (λ x -> wp pts (f x) P) == wp pts (mx >>= f) P
   consequence pts (Pure x) f = refl
   consequence pts (Step i c k) f = cong (lookupPT pts i c) (extensionality λ x -> consequence pts (k x) f)
 
   wpToBind : ∀ {a b es pts P} (mx : Free es a) (f : a -> Free es b) ->
-    wpFree pts mx (λ x -> wpFree pts (f x) P) -> wpFree pts (mx >>= f) P
+    wp pts mx (λ x -> wp pts (f x) P) -> wp pts (mx >>= f) P
   wpToBind {pts = pts} mx f H = subst id (consequence pts mx f) H
 
   wpFromBind : ∀ {a b es pts P} (mx : Free es a) (f : a -> Free es b) ->
-    wpFree pts (mx >>= f) P -> wpFree pts mx (λ x -> wpFree pts (f x) P)
+    wp pts (mx >>= f) P -> wp pts mx (λ x -> wp pts (f x) P)
   wpFromBind {pts = pts} mx f H = subst id (sym (consequence pts mx f)) H
 \end{code}
 
@@ -940,7 +940,7 @@ To express that |dmatch| returns something, we use a trivially true postconditio
 and replace the demonic choice of the |ptAll| semantics with the angelic choice of |ptAny|:
 \begin{code}
   dmatchComplete : ∀ r xs y →
-    Match r xs y → wpFree (ptRec matchSpec :: ptAny :: Nil) (dmatch (hiddenInstance(∈Head)) (r , xs)) (λ _ → ⊤)
+    Match r xs y → wp (ptRec matchSpec :: ptAny :: Nil) (dmatch (hiddenInstance(∈Head)) (r , xs)) (λ _ → ⊤)
 \end{code}
 The proof is short, since |dmatch| can only |fail| when it encounters an empty string and a regex that does not match the empty string, contradicting the assumption immediately:
 \begin{code}
