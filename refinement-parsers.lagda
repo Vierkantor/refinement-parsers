@@ -140,7 +140,7 @@ The refinement relation expresses when one program is ``better'' than another.
 We need to take into account the semantics we want to impose on the program,
 so we define it in terms of the predicate transformer associated with the program.
 \begin{code}
-  _⊑_ : (Forall(a)) (pt1 pt2 : (a -> Set) -> Set) -> Set
+  _⊑_ : (Forall(a : Set)) (pt1 pt2 : (a -> Set) -> Set) -> Set
   pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
 \end{code}
 %if style == newcode
@@ -564,7 +564,7 @@ To deal with the Kleene star, we rewrite |match| as a generally recursive functi
 Since |match| makes use of |allSplits|, we also rewrite that function to use a combination of effects.
 The types become:
 \begin{code}
-  allSplits : (Forall(a es)) ⦃ iND :  ENondet ∈ es ⦄ (List a) -> Free es (List a × List a)
+  allSplits : (Forall(a es)) ⦃ iND :  ENondet ∈ es ⦄ -> List a -> Free es (List a × List a)
   match : (Forall(es)) ⦃ iND : ENondet ∈ es ⦄ → (RecArr (Regex × String) es (tree ∘ Pair.fst))
 \end{code}
 %if style == newcode
