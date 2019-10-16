@@ -59,17 +59,18 @@ ENondet = eff CNondet RNondet
 %if style == newcode
 \begin{code}
 module NoCombination where
+  open Effect
 \end{code}
 %endif
 We represent effectful programs using the |Free| datatype.
 \begin{code}
   data Free (e : Effect) (a : Set) : Set where
     Pure : a -> Free e a
-    Step : (c : Effect.C e) -> (Effect.R e c -> Free e a) -> Free e a
+    Step : (c : C e) -> (R e c -> Free e a) -> Free e a
 \end{code}
 This gives a monad, with the bind operator defined as follows:
 \begin{code}
-  _>>=_ : ∀ {a b e} -> Free e a -> (a -> Free e b) -> Free e b
+  _>>=_ : (Forall(a b e)) Free e a -> (a -> Free e b) -> Free e b
   Pure x >>= f = f x
   Step c k >>= f = Step c (λ x -> k x >>= f)
 \end{code}
@@ -81,9 +82,9 @@ This gives a monad, with the bind operator defined as follows:
 %endif
 The easiest way to use effects is with smart constructors:
 \begin{code}
-  fail : ∀ {a} -> Free ENondet a
-  fail {a} = Step Fail λ ()
-  choice : ∀ {a} -> Free ENondet a -> Free ENondet a -> Free ENondet a
+  fail : (Forall(a)) Free ENondet a
+  fail = Step Fail λ ()
+  choice : (Forall(a)) Free ENondet a -> Free ENondet a -> Free ENondet a
   choice S₁ S₂ = Step Choice λ b -> if b then S₁ else S₂
 \end{code}
 
@@ -93,7 +94,7 @@ we can use predicate transformers.
   wp : {C : Set} {R : C -> Set} -> ((c : C) -> (R c -> Set) -> Set) ->
     {a : Set} -> Free (eff C R) a -> (a -> Set) -> Set
   wp alg (Pure x) P = P x
-  wp alg (Step c k) P = alg c \x -> wp alg (k x) P
+  wp alg (Step c k) P = alg c λ x -> wp alg (k x) P
 \end{code}
 Interestingly, these predicate transformers are exactly the catamorphisms from |Free| to |Set|.
 
@@ -116,8 +117,7 @@ module NoCombination2 where
 \end{code}
 %endif
 \begin{code}
-  wpNondetAll : {a : Set} -> Free ENondet a ->
-    (a -> Set) -> Set
+  wpNondetAll : (Forall(a)) Free ENondet a -> (a -> Set) -> Set
   wpNondetAll S P = wp ptAll S P
 \end{code}
 
@@ -132,7 +132,7 @@ module Spec where
       pre : Set
       post : a -> Set
 
-  wpSpec : {a : Set} -> Spec a -> (a -> Set) -> Set
+  wpSpec : (Forall(a)) Spec a -> (a -> Set) -> Set
   wpSpec [[ pre , post ]] P = pre ∧ (∀ o -> post o -> P o)
 \end{code}
 
@@ -140,12 +140,12 @@ The refinement relation expresses when one program is ``better'' than another.
 We need to take into account the semantics we want to impose on the program,
 so we define it in terms of the predicate transformer associated with the program.
 \begin{code}
-  _⊑_ : {a : Set} (pt1 pt2 : (a -> Set) -> Set) -> Set
+  _⊑_ : (Forall(a)) (pt1 pt2 : (a -> Set) -> Set) -> Set
   pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
 \end{code}
 %if style == newcode
 \begin{code}
-  ⊑-refl : ∀ {a} {pt : (a -> Set) -> Set} -> pt ⊑ pt
+  ⊑-refl : (Forall(a)) {pt : (a -> Set) -> Set} -> pt ⊑ pt
   ⊑-refl P x = x
 \end{code}
 %endif
@@ -196,11 +196,11 @@ data Regex : Set where
 Here, |Empty| is an expression for empty language (which matches no strings at all),
 while |Epsilon| is an expression for the language of the empty string (which matches exactly one string: |""|).
 
-What should a parser for regular expressions output?
-Perhaps it could return a |Bool| indicating whether a given string matches the regular expression,
-or we could annotate the regular expression with capture groups,
+What should a parser for regular languages output?
+If we only want to know whether a string matches a regular expression, we can return a |Bool|.
+If we want to know more, we could annotate the regular expression with capture groups,
 and say that the output of the parser maps each capture group to the substring that the capture group matches.
-In this case, we define the return type to be a parse tree mirroring the structure of the expression.
+We can also return a full parse tree, mirroring the structure of the expression.
 \begin{code}
 tree : Regex -> Set
 tree Empty          = ⊥
@@ -221,13 +221,14 @@ otherwise the output consists of all relevant parse trees.
 We give the relation using the following inductive definition:
 \begin{code}
 data Match : (r : Regex) -> String -> tree r -> Set where
-  Epsilon     : Match Epsilon Nil tt
-  Singleton   : (implicit(x : Char)) Match (Singleton x) (x :: Nil) x
-  OrLeft      : (implicit(l r : Regex)) (implicit(xs : String)) (implicit(x : tree l)) Match l xs x -> Match (l ∣ r) xs (Inl x)
-  OrRight     : (implicit(l r : Regex)) (implicit(xs : String)) (implicit(x : tree r)) Match r xs x -> Match (l ∣ r) xs (Inr x)
-  Concat      : (implicit(l r : Regex)) (implicit(ys zs : String)) (implicit(y : tree l)) (implicit(z : tree r)) Match l ys y -> Match r zs z -> Match (l · r) (ys ++ zs) (y , z)
-  StarNil     : (implicit(r : Regex)) Match (r *) Nil Nil
-  StarConcat  : (implicit(r : Regex)) (implicit(xs : String)) (implicit(y : tree r)) (implicit(ys : List (tree r))) Match (r · (r *)) xs (y , ys) -> Match (r *) xs (y :: ys)
+  Epsilon     :                                                                                                      Match Epsilon Nil tt
+  Singleton   : (implicit(x : Char))                                                                                 Match (Singleton x) (x :: Nil) x
+  OrLeft      : (implicit(l r : Regex)) (implicit(xs : String)) (implicit(x : tree l))                               Match l xs x -> Match (l ∣ r) xs (Inl x)
+  OrRight     : (implicit(l r : Regex)) (implicit(xs : String)) (implicit(x : tree r))                               Match r xs x -> Match (l ∣ r) xs (Inr x)
+  Concat      : (implicit(l r : Regex)) (implicit(ys zs : String)) (implicit(y : tree l)) (implicit(z : tree r))     Match l ys y -> Match r zs z ->
+                                                                                                                     Match (l · r) (ys ++ zs) (y , z)
+  StarNil     : (implicit(r : Regex))                                                                                Match (r *) Nil Nil
+  StarConcat  : (implicit(r : Regex)) (implicit(xs : String)) (implicit(y : tree r)) (implicit(ys : List (tree r)))  Match (r · (r *)) xs (y , ys) -> Match (r *) xs (y :: ys)
 \end{code}
 Note that there is no constructor for |Match Empty xs ms| for any |xs| or |ms|,
 which we interpret as that there is no way to match the |Empty| language with a string |xs|.
@@ -237,15 +238,15 @@ Since the definition of |Match| allows for multiple ways that a given |Regex| an
 such as in the trivial case where the |Regex| is of the form |r ∣ r|,
 and it also has cases where there is no way to match a |Regex| and a |String|,
 such as where the |Regex| is |Empty|,
-we can immediately predict some parts of the implementation.
+we can immediately predict some parts of the implementation of the |match| function.
 Whenever we encounter an expression of the form |l ∣ r|, we make a nondeterministic |Choice| between either |l| or |r|.
 Similarly, whenever we encounter the |Empty| expression, we immediately |fail|.
 In the previous analysis steps, we have already assumed that we implement the parser by structural recursion on the |Regex|,
 so let us consider other cases.
 
 The implementation for concatenation is not as immediately obvious.
-One way that we can deal with it is to change the type of the parser.
-Instead write a parser that returns the unmatched portion of the string,
+One way that we can deal with it is to not only return a |tree| from the parser.
+Instead, the parser also returns the unmatched portion of the string,
 and when we have to match a regular expression of the form |l · r| with a string |xs|,
 we match |l| with |xs| giving a left over string |ys|, then match |r| with |ys|.
 We can also do without changing the return values of the parser,
@@ -275,12 +276,12 @@ that does a case distinction on the expression and then checks that the string h
   match : (r : Regex) (xs : String) -> Free ENondet (tree r)
   match Empty xs = fail
   match Epsilon Nil = Pure tt
-  match Epsilon xs@(_ :: _) = fail
+  match Epsilon (_ :: _) = fail
   match (Singleton c) Nil = fail
   match (Singleton c) (x :: Nil) with c ≟ x
   match (Singleton c) (.c :: Nil) | yes refl = Pure c
   match (Singleton c) (x :: Nil) | no ¬p = fail
-  match (Singleton c) xs@(_ :: _ :: _) = fail
+  match (Singleton c) (_ :: _ :: _) = fail
   match (l · r) xs = do
     (ys , zs) <- allSplits xs
     y <- match l ys
@@ -291,18 +292,16 @@ that does a case distinction on the expression and then checks that the string h
 Unfortunately, we get stuck in the case of |_*|.
 We could do a similar construction to |l · r|,
 where we split the string into two parts and match the first part with |r| and the second part with |r *|,
-but this runs afoul of Agda's termination checker.
+but this definition will be rejected by Agda, since it does not terminate.
 Since there is no easy way to handle this case for now,
 we just |fail| when we encounter a regex |r *|.
 \begin{code}
   match (r *) xs = fail
 \end{code}
 
-Still, we can prove that this matcher works, as long as the regex does not contain |_*|.
-In other words, we can prove that the |match| function refines a specification
-where the precondition states that the regex contains no Kleene star,
-and the postcondition states that the matching is correct,
-with respect to the type |Match|.
+Still, we can prove that this matcher works, as long as the regular expression does not contain |_*|.
+In other words, we can prove that the |match| function satisfies the postcondition given by the type |Match|,
+as long as the precondition |hasNo*| holds:
 \begin{code}
   hasNo* : Regex -> Set
   hasNo* Empty = ⊤
@@ -317,59 +316,74 @@ with respect to the type |Match|.
   post : (r : Regex) (xs : String) -> tree r -> Set
   post = Match
 \end{code}
+In order to state that |match| works correctly,
+we need to determine its semantics: is the nondeterminism angelic or demonic?
+Since the use of nondeterminism in |match| is to find all correct matches,
+we want that all values potentially returned are correct,
+as specified by the |ptAll| semantics used in |wpNondetAll|.
 
-If we now want to give a correctness proof with respect to these pre- and postconditions,
+If we now try to give a correctness proof with respect to this pre- and postcondition,
 we run into an issue in cases where the definition makes use of the |_>>=_| operator.
 The |wp|-based semantics completely unfolds the left hand side,
 before it can talk about the right hand side.
-Whenever our matcher makes use of recursion on the left hand side of a |_>>=_| (as we do in |allSplits| and in the cases of |l · r| and |l ∣ r|),
+Whenever our matcher makes use of structural recursion on the left hand side of a |_>>=_|
+(more specifically, in the definition of |allSplits| and in the cases of |l · r| and |l ∣ r|),
 we cannot make progress in our proof without reducing this left hand side to a recursion-less expression.
 We need a lemma relating the semantics of program composition to the semantics of individual programs,
 which is also known as the law of consequence for traditional predicate transformer semantics.\todo{cite?}
 \begin{code}
-  consequence : ∀ {a b es P} pt (mx : Free es a) (f : a -> Free es b) ->
+  consequence : (Forall(a b es P)) ∀ pt (mx : Free es a) (f : a -> Free es b) ->
     wp pt mx (λ x -> wp pt (f x) P) == wp pt (mx >>= f) P
   consequence pt (Pure x) f = refl
-  consequence pt (Step c k) f = cong (pt c) (extensionality λ x -> consequence pt (k x) f)
+  consequence pt (Step c k) f = cong (pt c)
+    (extensionality λ x -> consequence pt (k x) f)
 
-  wpToBind : ∀ {a b es pt P} (mx : Free es a) (f : a -> Free es b) ->
+  wpToBind : (Forall (a b es pt P)) (mx : Free es a) (f : a -> Free es b) ->
     wp pt mx (λ x -> wp pt (f x) P) -> wp pt (mx >>= f) P
-  wpToBind {pt = pt} mx f H = subst id (consequence pt mx f) H
+  wpToBind (hidden(pt = pt)) mx f H = subst id (consequence pt mx f) H
 
-  wpFromBind : ∀ {a b es pt P} (mx : Free es a) (f : a -> Free es b) ->
+  wpFromBind : (Forall (a b es pt P)) (mx : Free es a) (f : a -> Free es b) ->
     wp pt (mx >>= f) P -> wp pt mx (λ x -> wp pt (f x) P)
-  wpFromBind {pt = pt} mx f H = subst id (sym (consequence pt mx f)) H
+  wpFromBind (hidden(pt = pt)) mx f H = subst id (sym (consequence pt mx f)) H
 \end{code}
 
-The correctness proof closely matches the structure of |match| (and by extension |allSplits|).
+The correctness proof for |match| closely matches the structure of |match| (and by extension |allSplits|).
 It uses the same recursion on |Regex| as in the definition of |match|.
 Since we make use of |allSplits| in the definition, we first give its correctness proof.
 \begin{code}
-  allSplitsSound : ∀ (xs : String) ->
-    wpSpec [[ ⊤ , (λ {(ys , zs) → xs == ys ++ zs})]] ⊑ wpNondetAll (allSplits xs)
-  allSplitsSound Nil        P (fst , snd) = snd _ refl
-  allSplitsSound (x :: xs)  P (fst , snd) = snd _ refl ,
-    wpToBind (allSplits xs) _ (allSplitsSound xs _ (tt , (λ {(ys , zs) H → snd _ (cong (x ::_) H)})))
+  allSplitsPost : String → String × String → Set
+  allSplitsPost xs (ys , zs) = xs == ys ++ zs
+  allSplitsSound : ∀ xs ->
+    wpSpec [[ ⊤ , allSplitsPost xs ]] ⊑ wpNondetAll (allSplits xs)
+  allSplitsSound Nil        P (preH , postH) = postH _ refl
+  allSplitsSound (x :: xs)  P (preH , postH) = postH _ refl ,
+    wpToBind (allSplits xs) _ (allSplitsSound xs _ (tt ,
+      λ _ H → postH _ (cong (x ::_) H)))
 \end{code}
 Then, using |wpToBind|, we incorporate this correctness proof in the correctness proof of |match|.
 Apart from having to introduce |wpToBind|, the proof essentially follows automatically from the definitions.
 \begin{code}
-  matchSound : ∀ r xs -> wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)
-  matchSound Empty xs P (preH , postH) = tt
-  matchSound Epsilon Nil P (preH , postH) = postH _ Epsilon
-  matchSound Epsilon (x :: xs) P (preH , postH) = tt
+  matchSound : ∀ r xs ->
+    wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)
+  matchSound Empty xs           P (preH , postH) = tt
+  matchSound Epsilon Nil        P (preH , postH) = postH _ Epsilon
+  matchSound Epsilon (x :: xs)  P (preH , postH) = tt
   matchSound (Singleton x) Nil P (preH , postH) = tt
   matchSound (Singleton x) (c :: Nil) P (preH , postH) with x ≟ c
-  matchSound (Singleton x) (c :: Nil) P (preH , postH) | yes refl = postH _ Singleton
-  matchSound (Singleton x) (c :: Nil) P (preH , postH) | no ¬p = tt
+  ... | yes refl = postH _ Singleton
+  ... | no ¬p = tt
   matchSound (Singleton x) (_ :: _ :: _) P (preH , postH) = tt
-  matchSound (l · r) xs P ((preL , preR) , postH) = wpToBind (allSplits xs) _ (allSplitsSound xs _ (tt ,
+  matchSound (l · r) xs P ((preL , preR) , postH) =
+    wpToBind (allSplits xs) _ (allSplitsSound xs _ (tt ,
     λ {(ys , zs) splitH → wpToBind (match l ys) _ (matchSound l ys _ (preL ,
     λ y lH → wpToBind (match r zs) _ ((matchSound r zs _ (preR ,
-    λ z rH → postH (y , z) (subst (λ xs → Match _ xs _) (sym splitH) (Concat lH rH)))))))}))
+    λ z rH → postH (y , z) (subst (λ xs → Match _ xs _) (sym splitH)
+    (Concat lH rH)))))))}))
   matchSound (l ∣ r) xs P ((preL , preR) , postH) =
-    wpToBind (match l xs) _ (matchSound l xs _ (preL , λ _ lH → postH _ (OrLeft lH))) ,
-    wpToBind (match r xs) _ (matchSound r xs _ (preR , λ _ rH → postH _ (OrRight rH)))
+    wpToBind (match l xs) _ (matchSound l xs _ (preL ,
+      λ _ lH → postH _ (OrLeft lH))) ,
+    wpToBind (match r xs) _ (matchSound r xs _ (preR ,
+      λ _ rH → postH _ (OrRight rH)))
   matchSound (r *) xs P (() , postH)
 \end{code}
 
@@ -377,8 +391,8 @@ Apart from having to introduce |wpToBind|, the proof essentially follows automat
 The matcher we have defined in the previous section is unfinished,
 since it is not able to handle regular expressions that incorporate the Kleene star.
 The fundamental issue is that the Kleene star allows for arbitrarily many distinct matchings in certain cases.
-For example, matching |Epsilon *| with the string |Nil| will allow for repeating the |Epsilon| arbitrarily often, since |Epsilon · (Epsilon *)| is equivalent to both |Epsilon| and |Epsilon *|.
-Thus, we cannot fix |match| by improving Agda's termination checker.
+For example, matching |Epsilon *| with the empty string |""| will allow for repeating the |Epsilon| arbitrarily often, since |Epsilon · (Epsilon *)| is equivalent to both |Epsilon| and |Epsilon *|.
+Thus, we cannot implement |match| on the |_*| operator by helping Agda's termination checker.
 
 What we will do instead is to deal with the recursion as an effect.
 A recursively defined (dependent) function of type |(i : I) -> O i|
@@ -389,19 +403,19 @@ ERec : (I : Set) (O : I -> Set) -> Effect
 ERec I O = eff I O
 \end{code}
 
-We are not yet done now that we have defined the missing effect,
-since replacing the effect |ENondet| with |ERec (Pair Regex String) (List String)| does not allow for nondeterminism anymore,
+Defining |match| with the |ERec| effect is not sufficient to implement it fully either,
+since replacing the effect |ENondet| with |ERec| does not allow for nondeterminism anymore,
 so while the Kleene star might work, the other parts of |match| do not work anymore.
-We need a way to combine the two effects.
+We need a way to combine effects.
 
 We can combine two effects in a straightforward way: given |eff C₁ R₁| and |eff C₂ R₂|,
 we can define a new effect by taking the disjoint union of the commands and responses,
 resulting in |eff (Either C₁ C₂) [ R₁ , R₂ ]|,
-where |[ R₁ , R₂ ]| is the unique map given by applying |R₁| to values in |C₁| and |R₂| to |C₂|.
+where |[ R₁ , R₂ ]| is the unique map given by applying |R₁| to values in |C₁| and |R₂| to |C₂|~\cite{effect-handlers-in-scope}.
 If we want to support more effects, we can repeat this process of disjoint unions,
 but this quickly becomes somewhat cumbersome.
-For example, the disjount union construction is associative,
-but we would need to supply a proof of this whenever the associations of our types do not match.
+For example, the disjount union construction is associative semantically, but not syntactically.
+If two programs have the same set of effects that is associated differently, we cannot directly compose them.
 
 Instead of building a new effect type, we modify the |Free| monad to take a list of effects instead of a single effect.
 The |Pure| constructor remains as it is,
@@ -409,20 +423,23 @@ while the |Step| constructor takes an index into the list of effects and the com
 %if style == newcode
 \begin{code}
 module Combinations where
+  open Effect
 \end{code}
 %endif
 \begin{code}
   data Free (es : List Effect) (a : Set) : Set where
     Pure : a -> Free es a
-    Step : {e : Effect} (i : e ∈ es) (c : Effect.C e) (k : Effect.R e c -> Free es a) -> Free es a
+    Step : (hidden(e : Effect)) (i : e ∈ es) (c : C e) (k : R e c -> Free es a) -> Free es a
 \end{code}
 By using a list of effects instead of allowing arbitrary disjoint unions,
-we have effectively chosen a canonical association order of these unions.
-Since the disjoint union is also commutative, it would be cleaner to have the collection of effects be unordered as well,
-but there does not seem to be a data type built into Agda that allows for unordered collections.
+we have effectively chosen that the disjoint unions canonically associate to the right.
+Since the disjoint union is also commutative,
+it would be cleaner to have the collection of effects be unordered as well.
+Unfortunately, Agda does not provide a multiset type that is easy to work with.
 
-To make use of the new definition of |Free|, we need to translate the previous constructions.
-We can define the monadic bind |_>>=_| in the same way as in the previous definition of |Free|.
+We choose to use the same names and almost the same syntax for this new definition of |Free|,
+since all definitions that use the old version can be ported over with almost no change.
+Thus, we will not repeat definitions such as |_>>=_| and |consequence| for the new |Free| type.
 %if style == newcode
 \begin{code}
   _>>=_ : ∀ {a b es} -> Free es a -> (a -> Free es b) -> Free es b
@@ -442,16 +459,17 @@ We can define the monadic bind |_>>=_| in the same way as in the previous defini
   f <$> mx = mx >>= λ x → Pure (f x)
 \end{code}
 %endif
-We also to make a small modification to the smart constructors for nondeterminism,
-since they now need to keep track of their position within a list of effects.
-Most of the bookkeeping can be offloaded to Agda's instance argument solver.
+
+Most of this bookkeeping can be inferred by Agda's typeclass inference,
+so we make the indices instance arguments,
+indicated by the double curly braces |⦃ ⦄| surrounding the arguments.
 \begin{code}
-  fail : ∀ {a es} ⦃ iND : ENondet ∈ es ⦄ -> Free es a
+  fail : (Forall(a es)) ⦃ iND : ENondet ∈ es ⦄ -> Free es a
   fail ⦃ iND ⦄ = Step iND Fail λ ()
-  choice : ∀ {a es} ⦃ iND : ENondet ∈ es ⦄ -> Free es a -> Free es a -> Free es a
+  choice : (Forall(a es)) ⦃ iND : ENondet ∈ es ⦄ -> Free es a -> Free es a -> Free es a
   choice ⦃ iND ⦄ S₁ S₂ = Step iND Choice λ b -> if b then S₁ else S₂
 
-  call : ∀ {I O es} -> ⦃ iRec : ERec I O ∈ es ⦄ -> (i : I) -> Free es (O i)
+  call : (Forall(I O es)) ⦃ iRec : ERec I O ∈ es ⦄ -> (i : I) -> Free es (O i)
   call ⦃ iRec ⦄ i = Step iRec i Pure
 \end{code}
 For convenience of notation, we introduce the |(RecArr _ es _)| notation for general recursion,
@@ -460,7 +478,7 @@ i.e. Kleisli arrows into |Free (ERec _ _ :: es)|.
   RecArr' : (C : Set) (es : List Effect) (R : C → Set) → Set
   (RecArr C es R) = (c : C) -> Free (eff C R :: es) (R c)
 \end{code}
-
+%if style == newcode
 \begin{code}
 instance
   inHead : ∀ {a} {x : a} {xs : List a} → x ∈ (x :: xs)
@@ -468,16 +486,17 @@ instance
   inTail : ∀ {a} {x x' : a} {xs : List a} → ⦃ i : x ∈ xs ⦄ → x ∈ (x' :: xs)
   inTail ⦃ i ⦄ = ∈Tail i
 \end{code}
+%endif
 
-Since we want the effects to behave compositionally,
-the semantics of the combination of effects should be similarly found in a list of predicate transformers.
-The type |List ((c : C) -> (R c -> Set) -> Set)| is not sufficient,
-since we need to ensure the types match up.
-Using a dependent type we can define a list of predicate transformers for a list of effects:
+With the syntax for combinations of effects defined, let us turn to semantics.
+Since the weakest precondition predicate transformer for a single effect is given as a fold
+over the effect's predicate transformer,
+the semantics for a combination of effects can be given as a fold over a (dependent) list of predicate transformers.
 %if style == newcode
 \begin{code}
 module Stateless where
   open Combinations
+  open Effect
   open Spec
 \end{code}
 %endif
@@ -485,18 +504,25 @@ module Stateless where
   record PT (e : Effect) : Set where
     constructor mkPT
     field
-      pt : (c : Effect.C e) → (Effect.R e c → Set) → Set
+      pt : (c : C e) → (R e c → Set) → Set
+      mono : ∀ c P P' → P ⊆ P' → pt c P → pt c P'
 
   data PTs : List Effect -> Set where
     Nil : PTs Nil
     _::_ : ∀ {e es} -> PT e -> PTs es -> PTs (e :: es)
 \end{code}
+The record type |PT| not only contains a predicate transformer |pt|,
+but also a proof that |pt| is monotone in its predicate.
+The requirement of monotonicity is needed to prove some lemmas later on \todo{which exactly?},
+and makes intuitive sense: if the precondition holds for a certain postcondition,
+a weaker postcondition should also have its precondition hold.
 
 Given a such a list of predicate transformers,
 defining the semantics of an effectful program is a straightforward generalization of |wp|.
 The |Pure| case is identical, and in the |Step| case we find the predicate transformer at the corresponding index to the effect index |i : e ∈ es| using the |lookupPT| helper function.
 \begin{code}
-  lookupPT : ∀ {C R es} (pts : PTs es) (i : eff C R ∈ es) -> (c : C) -> (R c -> Set) -> Set
+  lookupPT : (Forall(C R es)) (pts : PTs es) (i : eff C R ∈ es) ->
+    (c : C) -> (R c -> Set) -> Set
   lookupPT (pt :: pts) ∈Head = PT.pt pt
   lookupPT (pt :: pts) (∈Tail i) = lookupPT pts i
 \end{code}
@@ -509,44 +535,45 @@ The |Pure| case is identical, and in the |Step| case we find the predicate trans
 %endif
 This results in the following definition of |wp| for combinations of effects.
 \begin{code}
-  wp : forall {a es} (pts : PTs es) ->
-    Free es a -> (a -> Set) -> Set
+  wp : (Forall(a es)) (pts : PTs es) -> Free es a -> (a -> Set) -> Set
   wp pts (Pure x) P = P x
-  wp pts (Step i c k) P = lookupPT pts i c (λ x -> wp pts (k x) P)
+  wp pts (Step i c k) P = lookupPT pts i c λ x -> wp pts (k x) P
 \end{code}
 
-In the new definition of |match|, we want to combine the effects of nondeterminism and general recursion.
-To verify this definition, we need to give its semantics,
-for which we need to give the list of predicate transformers to |wp|.
-For nondeterminism we alread have the predicate transformer |ptAll|.
+The effects we are planning to use for |match| are a combination of nondeterminism and general recursion.
+We re-use the |ptAll| semantics of nondeterminism, packaging them in a |PT| record.
 However, it is not as easy to give a predicate transformer for general recursion,
 since the intended semantics of a recursive call depend
 on the function that is being called, i.e. the function that is being defined.
 
 However, if we have a specification of a function of type |(i : I) -> O i|,
 for example in terms of a relation of type |(i : I) -> O i -> Set|,
-we can define a predicate transformer:
+we are able to define a predicate transformer:
 \begin{code}
-  ptRec : ∀ {I : Set} {O : I -> Set} -> ((i : I) -> O i -> Set) -> PT (ERec I O)
+  ptRec : (Forall(I O)) ((i : I) -> O i -> Set) -> PT (ERec I O)
   PT.pt (ptRec R) i P = ∀ o -> R i o -> P o
   PT.mono (ptRec R) c P P' imp asm o h = imp _ (asm _ h)
 \end{code}
-For example, the |Match| relation serves as a specification for the |match| function.
+In the case of verifying the |match| function, the |Match| relation will play the role of |R|.
 If we use |ptRec R| as a predicate transformer to check that a recursive function satisfies the relation |R|,
 then we are proving \emph{partial correctness}, since we assume each recursive call terminates according to the relation |R|.
 
 \section{Recursively parsing every regular expression}
 
-Now we are able to handle the Kleene star:
-
+To deal with the Kleene star, we rewrite |match| as a generally recursive function using a combination of effects.
+Since |match| makes use of |allSplits|, we also rewrite that function to use a combination of effects.
+The types become:
 \begin{code}
-  allSplits : (Forall(a es)) ⦃ iND :  ENondet ∈ es ⦄ (xs : List a) -> Free es (List a × List a)
+  allSplits : (Forall(a es)) ⦃ iND :  ENondet ∈ es ⦄ (List a) -> Free es (List a × List a)
+  match : (Forall(es)) ⦃ iND : ENondet ∈ es ⦄ → (RecArr (Regex × String) es (tree ∘ Pair.fst))
+\end{code}
+%if style == newcode
+\begin{code}
   allSplits Nil = Pure (Nil , Nil)
   allSplits (x :: xs) = choice
     (Pure (Nil , (x :: xs)))
     (allSplits xs >>= λ {(ys , zs) → Pure ((x :: ys) , zs)})
 
-  match : (Forall(es)) ⦃ iND : ENondet ∈ es ⦄ → (RecArr (Regex × String) es (λ {(r , xs) -> tree r}))
   match (Empty , xs) = fail
   match (Epsilon , Nil) = Pure tt
   match (Epsilon , xs@(_ :: _)) = fail
@@ -563,6 +590,11 @@ Now we are able to handle the Kleene star:
   match ((l ∣ r) , xs) = choice
     (Inl <$> call (hiddenInstance(∈Head)) (l , xs))
     (Inr <$> call (hiddenInstance(∈Head)) (r , xs))
+\end{code}
+%endif
+Since the index argument to the smart constructor is inferred by Agda,
+the only change in the definition of |match| and |allSplits| will be that |match| now implements the Kleene star:
+\begin{code}
   match ((r *) , Nil) = Pure Nil
   match ((r *) , xs@(_ :: _)) = do
     (y , ys) <- call (hiddenInstance(∈Head)) ((r · (r *)) , xs)
@@ -570,7 +602,7 @@ Now we are able to handle the Kleene star:
 \end{code}
 
 The effects we need to use for running |match| are a combination of nondeterminism and general recursion.
-As discussed, we first need to give the specification for |match| before we can verify a program that makes use of |match|.
+As discussed, we first need to give the specification for |match| before we can verify a program that performs a recursive |call| to |match|.
 %if style == newcode
 \begin{code}
   ptAll : PT ENondet
@@ -590,16 +622,12 @@ As discussed, we first need to give the specification for |match| before we can 
   matchSpec : (r,xs : Pair Regex String) -> tree (Pair.fst r,xs) -> Set
   matchSpec (r , xs) ms = Match r xs ms
 
-  wpMatch : (Forall(a)) Free (eff (Pair Regex String) (λ {(r , xs) -> tree r}) :: ENondet :: Nil) a ->
+  wpMatch : (Forall(a)) Free (ERec (Pair Regex String) (tree ∘ Pair.fst) :: ENondet :: Nil) a ->
     (a -> Set) -> Set
   wpMatch = wp (ptRec matchSpec :: ptAll :: Nil)
 \end{code}
 
-In a few places, we use a recursive |call| instead of actual recursion.
-One advantage to this choice is that in proving correctness,
-we can use the specification of |match| directly,
-without having to use the following rule of |consequence| in between.
-Unfortunately, we still need |consequence| to deal with the call to |allSplits|.
+%if style == newcode
 \begin{code}
   consequence : ∀ {a b es P} pts (mx : Free es a) (f : a -> Free es b) ->
     wp pts mx (λ x -> wp pts (f x) P) == wp pts (mx >>= f) P
@@ -614,9 +642,11 @@ Unfortunately, we still need |consequence| to deal with the call to |allSplits|.
     wp pts (mx >>= f) P -> wp pts mx (λ x -> wp pts (f x) P)
   wpFromBind {pts = pts} mx f H = subst id (sym (consequence pts mx f)) H
 \end{code}
+%endif
 
 We can reuse exactly the same proof to show |allSplits| is correct,
 since we use the same semantics for the effects in |allSplits|.
+Similarly, the correctness proof of |match| will be the same on all cases except the Kleene star.
 %if style == newcode
 \begin{code}
   allSplitsSound : ∀ (xs : String) ->
@@ -625,7 +655,6 @@ since we use the same semantics for the effects in |allSplits|.
   allSplitsSound (x :: xs)  P (fst , snd) = snd _ refl ,
     wpToBind (allSplits xs) _ (allSplitsSound xs _ (tt , λ {(ys , zs) H → snd _ (cong (x ::_) H)}))
 \end{code}
-%endif
 On the other hand, the correctness proof for |match| needs a bit of tweaking to deal with the difference in the recursive steps.
 \begin{code}
   matchSound : ∀ r,xs -> wpSpec [[ ⊤ , matchSpec r,xs ]] ⊑ wpMatch (match (hiddenInstance(∈Head)) r,xs)
@@ -644,10 +673,13 @@ On the other hand, the correctness proof for |match| needs a bit of tweaking to 
     (λ o H -> postH _ (OrLeft H)) ,
     (λ o H -> postH _ (OrRight H))
 \end{code}
+%endif
 Now we are able to prove correctness of |match| on a Kleene star.
 \begin{code}
-  matchSound ((r *) , Nil)        P (preH , postH) = postH _ StarNil
-  matchSound ((r *) , (x :: xs))  P (preH , postH) = λ o H -> postH _ (StarConcat H)
+  matchSound ((r *) , Nil)        P (preH , postH) =
+    postH _ StarNil
+  matchSound ((r *) , (x :: xs))  P (preH , postH) o H =
+    postH _ (StarConcat H)
 \end{code}
 
 At this point, we have defined a parser for regular languages
@@ -666,7 +698,7 @@ instead of on the regular expression.
 Since recursion on the structure of a regular expression
 does not guarantee termination of the parser,
 we can instead perform recursion on the string to be parsed.
-To do this, we make use of the Brzozowski derivative.
+To do this, we make use of an operation on languages called the Brzozowski derivative.
 \begin{Def}[\cite{Brzozowski}]
 The \emph{Brzozowski derivative} of a formal language |L| with respect to a character |x| consists of all strings |xs| such that |x :: xs ∈ L|.
 \end{Def}
@@ -747,7 +779,7 @@ The code for the parser, |dmatch|, itself is very short.
 As we sketched, for an empty string we check that the expression matches the empty string,
 while for a non-empty string we use the derivative to perform a recursive call.
 \begin{code}
-  dmatch : (Forall(es)) ⦃ iND : ENondet ∈ es ⦄ -> (RecArr (Regex × String) es (λ {(r , xs) -> tree r}))
+  dmatch : (Forall(es)) ⦃ iND : ENondet ∈ es ⦄ -> (RecArr (Regex × String) es (tree ∘ Pair.fst))
   dmatch (r , Nil) with matchEpsilon r
   ... | yes (ms , _)  = Pure ms
   ... | no ¬p         = fail
@@ -757,35 +789,41 @@ while for a non-empty string we use the derivative to perform a recursive call.
 Since |dmatch| always consumes a character before going in recursion, we can easily prove that each recursive call only leads to finitely many other calls.
 This means that for each input value we can unfold the recursive step in the definition a bounded number of times and get a computation with no recursion.
 Intuitively, this means that |dmatch| terminates on all input.
-If we want to make this more formal, we need to consider what it means to have no recursion in the computation.
+If we are going to give a formal proof of termination, we should first determine the correct formalization of this notion.
+For that, we need to consider what it means to have no recursion in the unfolded computation.
 A definition for the |while| loop using general recursion looks as follows:
 \begin{code}
-  while : ∀ {es a} -> ⦃ iRec : ERec a (K a) ∈ es ⦄ -> (a -> Bool) -> (a -> a) -> (a -> Free es a)
+  while : (Forall(es a)) ⦃ iRec : ERec a (K a) ∈ es ⦄ ->
+    (a -> Bool) -> (a -> a) -> (a -> Free es a)
   while cond body i = if cond i then Pure i else (call (body i))
 \end{code}
 We would like to say that some |while| loops terminate, yet the definition of |while| always contains a |call| in it.
 Thus, the requirement should not be that there are no more calls left,
 but that these calls are irrelevant.
-A next intuitive idea could be the following:
-if we make the recursive computation into a |Partial| computation by |fail|ing instead of |call|ing,
-the |Partial| computation still works the same, i.e. it refines, the recursive computation.
+
+Intuitively, we could say that a definition |S| calling |f| terminates
+if we make the unfolded definition into a |Partial| computation by replacing |call| with |fail|,
+the definition terminates if the |Partial| computation still works the same, i.e. it refines |S|.
 However, this mixes the concepts of correctness and termination.
-We want to see that the computation terminates with some output, without caring about which output this is.
-Thus, we should only have a trivial postcondition |λ _ -> ⊤|.
+We want to see that the |Partial| computation gives some output, without caring about which output this is.
+Thus, we should only have a trivial postcondition.
 We formalize this idea in the |terminates-in| predicate.
 \begin{code}
-  terminates-in : (Forall(C R es a)) (pts : PTs es) (f : (RecArr C es R)) (S : Free (eff C R :: es) a) → Nat → Set
+  terminates-in : (Forall(C R es a)) (pts : PTs es)
+    (f : (RecArr C es R)) (S : Free (eff C R :: es) a) → Nat → Set
   terminates-in pts f (Pure x) n = ⊤
   terminates-in pts f (Step ∈Head c k) Zero = ⊥
-  terminates-in pts f (Step ∈Head c k) (Succ n) = terminates-in pts f (f c >>= k) n
-  terminates-in pts f (Step (∈Tail i) c k) n = lookupPT pts i c (λ x → terminates-in pts f (k x) n)
+  terminates-in pts f (Step ∈Head c k) (Succ n) =
+    terminates-in pts f (f c >>= k) n
+  terminates-in pts f (Step (∈Tail i) c k) n =
+    lookupPT pts i c (λ x → terminates-in pts f (k x) n)
 \end{code}
 
 Since |dmatch| always consumes a character before going in recursion,
 we can bound the number of recursive calls with the length of the input string.
 The proof goes by induction on this string.
-Unfolding the recursive |call| gives |(dmatch (d r /d x , xs) >>= (Pure ∘ integralTree)|,
-which we can rewrite in the lemma |terminates-fmap| using the associativity monad law.
+Unfolding the recursive |call| gives |integralTree <$> dmatch (d r /d x , xs)|,
+which we rewrite using the associativity monad law in a lemma called |terminates-fmap|.
 \begin{code}
   dmatchTerminates : (r : Regex) (xs : String) →
     terminates-in (ptAll :: Nil) (dmatch (hiddenInstance(∈Head)) ) (dmatch (hiddenInstance(∈Head)) (r , xs)) (length xs)
@@ -815,32 +853,13 @@ If we apply transitivity, it suffices to show that |dmatch| is a refinement of |
 Our first step is to show that the derivative operator is correct,
 i.e. |d r /d x| matches those strings |xs| such that |r| matches |x :: xs|.
 \begin{code}
-  derivativeCorrect : (Forall(x xs)) ∀ r -> (Forall(y)) Match (d r /d x) xs y -> Match r (x :: xs) (integralTree r y)
+  derivativeCorrect : (Forall(x xs)) ∀ r -> (Forall(y))
+    Match (d r /d x) xs y -> Match r (x :: xs) (integralTree r y)
 \end{code}
-Since the definition of |d_/d_| uses the |integralTree| function,
-we also prove the correctness of |integralTree|.
-\begin{code}
-  integralTreeCorrect  : ∀ r x xs y -> Match (d r /d x) xs y -> Match r (x :: xs) (integralTree r y)
-\end{code}
-All three proofs mirror the definitions of these functions,
+The proof mirrors the definitions of these functions,
 being structured as a case distinction on the regular expression.
 %if style == newcode
 \begin{code}
-  integralTreeCorrect (Singleton c) x xs y H with x ≟ c
-  integralTreeCorrect (Singleton c) .c .Nil tt Epsilon | yes refl = Singleton
-  integralTreeCorrect (Singleton c) x xs y () | no ¬p
-  integralTreeCorrect (l ∣ r) x xs .(Inl _) (OrLeft H) = OrLeft (integralTreeCorrect l x xs _ H)
-  integralTreeCorrect (l ∣ r) x xs .(Inr _) (OrRight H) = OrRight (integralTreeCorrect r x xs _ H)
-  integralTreeCorrect (l · r) x xs y H with matchEpsilon l
-  integralTreeCorrect (l · r) x .(ys ++ zs) (Inl (fst , snd)) (OrLeft (Concat {ys = ys} {zs} H H')) | yes p
-    = Concat (integralTreeCorrect l x ys fst H) H'
-  integralTreeCorrect (l · r) x xs (Inr y) (OrRight H) | yes (y' , H')
-    = Concat H' (integralTreeCorrect r x xs y H)
-  integralTreeCorrect (l · r) x .(ys ++ zs) (fst , snd) (Concat {ys = ys} {zs} H H') | no ¬p
-    = Concat (integralTreeCorrect l x ys fst H) H'
-  integralTreeCorrect (r *) x .(ys ++ zs) (fst , snd) (Concat {ys = ys} {zs} H H')
-    = StarConcat (Concat (integralTreeCorrect r x ys fst H) H')
-
   derivativeCorrect Empty ()
   derivativeCorrect Epsilon ()
   derivativeCorrect {x} (Singleton c) m with x ≟ c
@@ -858,8 +877,8 @@ being structured as a case distinction on the regular expression.
 
 Before we can prove the correctness of |dmatch| in terms of |match|,
 it turns out that we also need to describe |match| itself better.
-To show |match| is refined by |dmatch|,
-we need to prove that the output of |dmatch| is a subset of that of |match|.
+The meaning of our goal, to show that |match| is refined by |dmatch|,
+is to prove that the output of |dmatch| is a subset of that of |match|.
 Since |match| makes use of |allSplits|, we first prove
 that |allSplits| returns all possible splittings of a string.
 \begin{code}
@@ -874,12 +893,13 @@ that |allSplits| returns all possible splittings of a string.
 \end{code}
 %endif
 The proof mirrors |allSplits|, performing induction on |xs|.
-Note that |allSplitsSound| and |allSplitsComplete| together show that |allSplits xs| is equivalent to its specification |[[ ⊤ , λ {(ys , zs) -> xs == ys + zs}]]|,
-in the sense of the |_≡_| relation.
+% Note that |allSplitsSound| and |allSplitsComplete| together show that |allSplits xs| is equivalent to its specification |[[ ⊤ , λ {(ys , zs) -> xs == ys + zs}]]|,
+% in the sense of the |_≡_| relation.
 
 Using the preceding lemmas, we can prove the partial correctness of |dmatch| by showing it refines |match|:
 \begin{code}
-  dmatchSound : ∀ r xs -> wpMatch (match (hiddenInstance(∈Head)) (r , xs)) ⊑ wpMatch (dmatch (hiddenInstance(∈Head)) (r , xs))
+  dmatchSound : ∀ r xs ->
+    wpMatch (match (hiddenInstance(∈Head)) (r , xs)) ⊑ wpMatch (dmatch (hiddenInstance(∈Head)) (r , xs))
 \end{code}
 Since we need to perform the case distinctions of |match| and of |dmatch|,
 the proof is longer than that of |matchSoundness|.
@@ -939,8 +959,8 @@ In other words, we will show that if there is a valid parse tree, |dmatch| retur
 To express that |dmatch| returns something, we use a trivially true postcondition,
 and replace the demonic choice of the |ptAll| semantics with the angelic choice of |ptAny|:
 \begin{code}
-  dmatchComplete : ∀ r xs y →
-    Match r xs y → wp (ptRec matchSpec :: ptAny :: Nil) (dmatch (hiddenInstance(∈Head)) (r , xs)) (λ _ → ⊤)
+  dmatchComplete : ∀ r xs y → Match r xs y →
+    wp (ptRec matchSpec :: ptAny :: Nil) (dmatch (hiddenInstance(∈Head)) (r , xs)) (λ _ → ⊤)
 \end{code}
 The proof is short, since |dmatch| can only |fail| when it encounters an empty string and a regex that does not match the empty string, contradicting the assumption immediately:
 \begin{code}
@@ -949,7 +969,10 @@ The proof is short, since |dmatch| can only |fail| when it encounters an empty s
   ... | no ¬p = ¬p (_ , H)
   dmatchComplete r (x :: xs) y H y' H' = tt
 \end{code}
-Here we have demonstrated the power of predicate transformer semantics for effects:
+Note that |dmatchComplete| does not show that |dmatch| terminates:
+the semantics for the recursive case assume that |dmatch| always returns some value |y'|.
+
+In the proofs of |dmatchSound| and |dmatchComplete|, we demonstrate the power of predicate transformer semantics for effects:
 by separating syntax and semantics, we can easily describe different aspects (soundness and completeness) of the one definition of |dmatch|.
 Since the soundness and completeness result we have proved imply partial correctness, and partial correctness and termination imply total correctness,
 we can conclude that |dmatch| is a totally correct parser for regular languages.
@@ -1124,6 +1147,7 @@ and a grammar will consist of the list of all relevant productions.
 %if style == newcode
 \begin{code}
   open Combinations
+  open Effect
 \end{code}
 %endif
 While we can follow the traditional development of parsers from nondeterministic state,
@@ -1180,7 +1204,7 @@ We modify the definition of |wp| so each |Effect| can access its own state.
   record PTS (s : Set) (e : Effect) : Set where
     constructor mkPTS
     field
-      pt : (c : Effect.C e) → (Effect.R e c → s → Set) → s → Set
+      pt : (c : C e) → (R e c → s → Set) → s → Set
       mono : ∀ c P Q → (∀ x t → P x t → Q x t) → ∀ t → pt c P t → pt c Q t
 
   data PTSs (s : Set) : List Effect -> Set where
