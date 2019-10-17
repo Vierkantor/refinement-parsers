@@ -25,16 +25,55 @@ P ⊆ Q = ∀ x -> P x -> Q x
 \begin{document}
 
 \title{Verified parsers using the refinement calculus and algebraic effects}
+% Of misschien iets als:
+% A predicate transformer semantics for parsing
+% Verifying parser combinators using predicate transformers
 \author{Tim Baanen \and Wouter Swierstra}
 \institute{Vrije Universiteit Amsterdam, Utrecht University
 \email{\{t.baanen@@vu.nl,w.s.swierstra@@uu.nl\}}}
 %
 \maketitle              % typeset the header of the contribution
 
-There are various ways to write a parser in functional languages, for example using parser combinations.
-How do we ensure these parsers are correct?
-Previous work has shown that predicate transformers are useful for verification of programs using algebraic effects.
-This paper will show how predicate transformers and algebraic effects allow for formal verification of parsers.
+\section{Introduction}
+\label{sec:intro}
+
+Parsing is hard. Despite a great deal of existing tooling and libraries.
+
+There are various ways to write a parser in functional languages---famously using parser combinators.
+% \cite{hutton, swierstra-duponcheel, list-of-successes,others?}
+
+How do we ensure that these parser combinators are correct? There are
+several different papers that attempt to answer this
+question %\cite{nils anders danielsson, denis firsov}.
+In this paper, we take a different approach, drawing inspiration from
+recent work on algebraic effects.%\cite{?}
+In particular, we demonstrate how an algebraic treatment of general
+recursion lets us separate the (partial) correctness of the
+combinators from their termination in a clean fashion. Most existing
+proofs require combinators to show that the string being parsed
+decreases, conflating termination and correctness. We aim to provide a
+library
+that\ldots %TODO What is the distinguishing feature of our approach?
+Finally, this paper serves an extended example of the recent work on
+using predicate transformers to reason about (combinations of)
+algebraic effects.%\cite ICFP-2019.
+
+To these ends, this paper makes the following novel contributions:
+\begin{itemize}
+\item The non-recursive fragment of regular expressions can be parsed
+  using non-determinism (Section 2); additionally parsing the
+  recursive can be done without compromising our previous definitions
+  (Section 3 and 4). Finally, we can prove the termination in the
+  typical fashion using Brzozowski derivatives (Section 5).
+  
+\item Next, we show how this approach may be extended to handle
+  context-free languages. To do so, we give an account of context-free
+  languages in Agda (Section 6), show how to write parsers using
+  algebraic effects (Section 7), and map grammars to parsers (Section
+  8). Once again, we can cleanly separate the proofs of partial
+  correctness (Section 9) and termination (Section 10).
+\end{itemize}
+All of our results have been formalized in Agda. %TODO link?
 
 \section{Recap: algebraic effects and predicate transformers}
 Algebraic effects were introduced to allow for incorporating side effects in functional languages.
@@ -1743,3 +1782,11 @@ and induction on the list of rules for |filterStep|,
 and call each other as indicated.
 
 \end{document}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% TeX-command-default: "lagda2pdf"
+%%% End: 
+
+
