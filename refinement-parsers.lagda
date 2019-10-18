@@ -1000,6 +1000,7 @@ In general, choosing between informal reasoning and formal verification will alw
 \section{Parsing as effect}
 %if style == newcode
 \begin{code}
+module EParser where
   open Combinations
   open Effect
 \end{code}
@@ -1039,7 +1040,7 @@ The denotational semantics of a parser in the |Free| monad take the form of a fo
 handling each command in the |Parser| monad.
 \begin{code}
   toParser : (Forall(a)) Free (ENondet :: EParser :: Nil) a -> Parser a
-  toParser (Pure x) Nil = x :: Nil
+  toParser (Pure x) Nil = (x , Nil) :: Nil
   toParser (Pure x) (_ :: _) = Nil
   toParser (Step ∈Head Fail k) xs = Nil
   toParser (Step ∈Head Choice k) xs =
@@ -1079,7 +1080,7 @@ we can find a weakest precondition that incorporates the current state:
 \begin{code}
   wpS : (Forall(s es a)) (pts : PTSs s es) -> Free es a -> (a -> s -> Set) -> s -> Set
   wpS pts (Pure x) P = P x
-  wpS pts (Step i c k) P = lookupPTS pts i c λ x -> wp pts (k x) P
+  wpS pts (Step i c k) P = lookupPTS pts i c λ x -> wpS pts (k x) P
 \end{code}
 
 In this definition for |wpS|, we assume that all effects share access to one mutable variable of type |s|.
@@ -1152,7 +1153,7 @@ The (disjoint) union of |Char| and |Nonterm| gives all the symbols that we can u
 %if style == newcode
 \begin{code}
 module Grammar (gs : GrammarSymbols) where
-  open ContextFree hiding (Symbol)
+  open EParser hiding (Symbol)
   open GrammarSymbols gs
 \end{code}
 %endif
@@ -1202,6 +1203,7 @@ our implementation uses the |Free| monad and algebraic effects, while \citeautho
 %if style == newcode
 \begin{code}
 module FromProds (gs : GrammarSymbols) (prods : Grammar.Prods gs) where
+  open EParser hiding (Symbol)
   open GrammarSymbols gs
   open Grammar gs
   open Combinations
@@ -1274,6 +1276,7 @@ and for matching a string with a single production rule.
 %if style == newcode
 \begin{code}
 module Correctness (gs : GrammarSymbols) where
+  open EParser hiding (Symbol)
   open GrammarSymbols gs
   open Grammar gs
   open Combinations
@@ -1443,18 +1446,18 @@ Moreover, they have implemented this transform, including formal verification, i
 In this work, we assume that the left-corner transform has already been applied if needed,
 so that there is an upper bound on the length of left-recursive chains in the grammar.
 
-We formalize one link of this left-recursive chain in the type |Rec|,
+We formalize one link of this left-recursive chain in the type |LRec|,
 while a list of such links forms the |Chain| data type.
 % Get rid of the implicit fields.
 \begin{spec}
-  record Rec (prods : Prods) (A B : Nonterm) : Set where
+  record LRec (prods : Prods) (A B : Nonterm) : Set where
     field
       rec : prod A (map Inr xs ++ (Inr B :: ys)) sem ∈ prods
 \end{spec}
-(We leave |xs|, |ys| and |sem| as implicit fields of |Rec|, since they are fixed by the type of |rec|.)
+(We leave |xs|, |ys| and |sem| as implicit fields of |LRec|, since they are fixed by the type of |rec|.)
 %if style == newcode
 \begin{code}
-  record Rec (prods : Prods) (A B : Nonterm) : Set where
+  record LRec (prods : Prods) (A B : Nonterm) : Set where
     field
       {xs} : List Nonterm
       {ys} : List Symbol
@@ -1465,7 +1468,7 @@ while a list of such links forms the |Chain| data type.
 \begin{code}
   data Chain (prods : Prods) : Nonterm -> Nonterm -> Set where
     Nil : (Forall(A)) Chain prods A A
-    _::_ : (Forall(A B C)) Rec prods B A -> Chain prods A C -> Chain prods B C
+    _::_ : (Forall(A B C)) LRec prods B A -> Chain prods A C -> Chain prods B C
 \end{code}
 Now we say that a set of productions has no left recursion if all such chains have an upper bound on their length.
 %if style == newcode
@@ -1555,7 +1558,7 @@ In our case, the relation |RecOrder| will work as a recursive variant for |fromP
     Adv : (Forall(str str' A B)) length str < length str' →
       RecOrder prods (A , str) (B , str')
     Rec : (Forall(str str' A B)) length str ≤ length str' →
-      Rec prods A B → RecOrder prods (A , str) (B , str')
+      LRec prods A B → RecOrder prods (A , str) (B , str')
 \end{code}
 With the definition of |RecOrder|, we can complete the correctness proof of |fromProds|,
 by giving an element of the corresponding |Termination| type.
@@ -1598,7 +1601,7 @@ If |k| is zero, we have consumed more than |length str| characters of |str|, als
 
   Termination.var (fromProdsTerminates prods bound H) A str = filterStep prods id A str str ≤-refl
     where
-    open FromProds gs prods hiding (fromProds)
+    open FromProds gs prods hiding (FreeParser; fromProds)
 
     variant-fmap : ∀ {a b C R s es _≺_ c t t'} (pts : PTSs s (eff C R :: es)) f S {k : a → b} → variant' pts f _≺_ c t S t' → variant' pts f _≺_ c t (S >>= λ x → Pure (k x)) t'
     variant-fmap pts f (Pure x) H = tt
@@ -1622,6 +1625,8 @@ If |k| is zero, we have consumed more than |length str| characters of |str|, als
     nextNonterm : ∀ {A B Bs xs sem} -> prod A (map Inr Bs ++ (Inr B :: xs)) sem ∈ prods -> prod A (map Inr (Bs ++ (B :: Nil)) ++ xs) (subst (λ xs' -> ⟦ xs' ∥ A ⟧) (map-snoc B Bs xs) sem) ∈ prods
     nextNonterm {A} {B} {Bs} {xs} {sem} i = subst2 (λ xs' sem' → prod A xs' sem' ∈ prods) (map-snoc B Bs xs) i
 
+
+    prodsVariant : {a : Set} → Nonterm → String → FreeParser prods a → String → Set
 \end{code}
 %endif
 
