@@ -694,7 +694,7 @@ and show that |match| is refined by it.
 Our approach is to do recursion on the input string
 instead of on the regular expression.
 
-\section{Termination, using derivatives}
+\section{Termination, using derivatives} \label{sec:dmatch}
 Since recursion on the structure of a regular expression
 does not guarantee termination of the parser,
 we can instead perform recursion on the string to be parsed.
@@ -997,87 +997,136 @@ The final major difference is that \citeauthor{harper-regex} uses manual verific
 Although our development takes more work, the correctness proofs give more certainty than the informal arguments made by \citeauthor{harper-regex}.
 In general, choosing between informal reasoning and formal verification will always be a trade-off between speed and accuracy.
 
-\section{Effects as unifying theory of parsers} \label{sec:contextFree}
-In the previous section, we have developed a formally verified parser for regular languages.
-The class of regular languages is small, and does not include most programming languages.
-If we want to write a parser for a larger class of languages, we fist need a practical representation.
-In classical logic, the most general concept of a formal language is no more than a set of strings, or a predicate over strings,
-represented by the type |String -> Set|.
-Constructively, such predicates (even when decidable) are not very useful: the language $\{\mathit{xs} \mid \mathit{xs} \text{ is a valid proof of the Riemann Hypothesis} \}$ has no defined cardinality.
-To make them more amenable to reasoning, we impose structure on languages, for example by giving their definition as a regular expression.
-When we have a more structured grammar, we can write a parser for these grammars,
-and prove its partial correctness and termination, just as we did for regular expressions and |dmatch|.
-
-One structure we can impose on languages is that we can always perform local operations,
-in the style of the Brzozowski derivative.
-This means we can decide whether a language |l| matches the empty string (as |matchEpsilon| does for regular languages),
-and for each character |x|, we can compute the derivative |d l /d x|,
-which contains exactly those |xs| such that |x :: xs| is in |l|.
-Packaging up these two operations into a record type gives the \emph{coinductive trie} representation
-of a formal language, as described by \citet{coinductive-trie}.
-We augment the definition by including a list of the parser's output values for the empty string,
-instead of a Boolean stating whether the language contains the empty string.
-An empty list corresponds to the original |False|, while a non-empty list corresponds to |True|.
+\section{Parsing as effect}
 %if style == newcode
 \begin{code}
-module ContextFree where
-  open import Size public
+  open Combinations
+  open Effect
 \end{code}
 %endif
+In the previous sections, we wrote parsers as nondeterministic functions.
+For more complicated classes of languages than regular expressions, explicitly passing around the string to be parsed becomes cumbersome quickly.
+The traditional solution is to switch from nondeterminism to stateful nondeterminism, where the state contains the unparsed portion of the string~\cite{hutton}.
+The combination of nondeterminism and state can be represented by the |Parser| monad:
 \begin{code}
-  record Trie (i : Size) (a : Set) : Set where
-    coinductive
+  Parser : Set → Set
+  Parser a = String → List (a × String)
+\end{code}
+
+Since our development makes use of algebraic effects,
+we can introduce the effect of mutable state without having to change existing definitions.
+We introduce this using the |EParser| effect, which has one command |Symbol|.
+Calling |Symbol| will return the current symbol in the state (advancing the state by one) or fail if all symbols have been consumed.
+\begin{code}
+  data CParser : Set where
+    Symbol : CParser
+  RParser : CParser -> Set
+  RParser Symbol = Char
+  EParser = eff CParser RParser
+
+  symbol : (Forall(es)) ⦃ iP : EParser ∈ es ⦄ -> Free es Char
+  symbol ⦃ iP ⦄ = Step iP Symbol Pure
+\end{code}
+We could add more commands such as |EOF| for detecting the end of the input, but we do not need them in the current development.
+In the semantics we will define that parsing was successful if the input string has been completely consumed.
+
+Note that |EParser| is not sufficient by itself to implement even simple parsers such as |dmatch|:
+we need to be able to choose between parsing the next character or returning a value for the empty string.
+This is why we usually combine |EParser| with the nondeterminism effect |ENondet|,
+and the general recursion effect |ERec|.
+
+The denotational semantics of a parser in the |Free| monad take the form of a fold,
+handling each command in the |Parser| monad.
+\begin{code}
+  toParser : (Forall(a)) Free (ENondet :: EParser :: Nil) a -> Parser a
+  toParser (Pure x) Nil = x :: Nil
+  toParser (Pure x) (_ :: _) = Nil
+  toParser (Step ∈Head Fail k) xs = Nil
+  toParser (Step ∈Head Choice k) xs =
+    toParser (k True) xs ++ toParser (k False) xs
+  toParser (Step (∈Tail ∈Head) Symbol k) Nil = Nil
+  toParser (Step (∈Tail ∈Head) Symbol k) (x :: xs) = toParser (k x) xs
+\end{code}
+
+In this article, we are more interested in the predicate transformer semantics of |EParse|.
+Since the semantics of the |EParse| effect refer to a state, the predicates depend on this state.
+We can incorporate a mutable state of type |s| in predicate transformer semantics
+by replacing the propositions in |Set| with predicates over the state in |s → Set|.
+We define the resulting type of stateful predicate transformers for an effect |e| to be |PTS s e|, as follows:
+\begin{code}
+  record PTS (s : Set) (e : Effect) : Set where
+    constructor mkPTS
     field
-      ε : List a
-      d_/d_ : (implicit(j : Size< i)) Char -> Trie j a
+      pt : (c : C e) → (R e c → s → Set) → s → Set
+      mono : ∀ c P P' → (∀ x t → P x t → P' x t) → pt c P ⊆ pt c P'
 \end{code}
 %if style == newcode
 \begin{code}
-  open Trie public
+  data PTSs (s : Set) : List Effect -> Set where
+    Nil : PTSs s Nil
+    _::_ : ∀ {e es} -> PTS s e -> PTSs s es -> PTSs s (e :: es)
+
+  lookupPTS : ∀ {s C R es} (pts : PTSs s es) (i : eff C R ∈ es) -> (c : C) -> (R c -> s -> Set) -> s -> Set
+  lookupPTS (pt :: pts) ∈Head c P t = PTS.pt pt c P t
+  lookupPTS (pt :: pts) (∈Tail i) c P t = lookupPTS pts i c P t
+  lookupMono : ∀ {s C R es} (pts : PTSs s es) (i : eff C R ∈ es) -> ∀ c P P' → (∀ x t → P x t → P' x t) → ∀ t → lookupPTS pts i c P t → lookupPTS pts i c P' t
+  lookupMono (pt :: pts) ∈Head = PTS.mono pt
+  lookupMono (pt :: pts) (∈Tail i) = lookupMono pts i
 \end{code}
 %endif
-The definition of the |Trie| type is complicated by making it coinductive and using sized types.
-We need |Trie| to be coinductive since it appears in a negative position in the |d_/d_| operator,
-or viewed in another way, since the |Trie| type needs to be nested arbitrarily deeply to describe arbitrarily long strings.
-The sized types help Agda to check that certain definitions terminate.
-Despite being needed to ensure the |Trie| type is useful, the two complications do not play an important role in the remainder of the development.
-
-\begin{example}
-Let us look at two simple examples of definitions using the |Trie| type.
-The first definition, |emptyTrie|, represents the empty language.
-It does not contain the empty string, so |ε emptyTrie| is the empty list.
-It also does not contain any string of the form |x :: xs|, so the derivatives of the empty trie are all the empty trie again.
+If we define |PTSs| and |lookupPTS| analogously to |PTs| and |lookupPT|, 
+we can find a weakest precondition that incorporates the current state:
 \begin{code}
-  emptyTrie : (Forall(i a)) Trie i a
-  ε emptyTrie = Nil
-  d emptyTrie /d x = emptyTrie
-\end{code}
-This is also an example of why we need the coinductive structure of the |Trie| type,
-since the definition |d emptyTrie /d x = emptyTrie| is not productive for an inductive type.
-
-The second example of a construction in the |Trie| type is the union operator,
-which is straightforward to write out.
-\begin{code}
-  _∪t_ : (Forall(i a)) Trie i a -> Trie i a -> Trie i a
-  ε (t ∪t t') = ε t ++ ε t'
-  d (t ∪t t') /d x = (d t /d x) ∪t (d t' /d x)
-\end{code}
-\end{example}
-
-We can also take a very computational approach to languages,
-representing them by a parser.
-This parser takes a string and returns a list of successful matches,
-similar to the |ε| operator of the coinductive |Trie|.
-\begin{code}
-  Parser : Set -> Set
-  Parser a = String -> List a
+  wpS : (Forall(s es a)) (pts : PTSs s es) -> Free es a -> (a -> s -> Set) -> s -> Set
+  wpS pts (Pure x) P = P x
+  wpS pts (Step i c k) P = lookupPTS pts i c λ x -> wp pts (k x) P
 \end{code}
 
-\subsection{Context-free grammars with |Productions|}
-Using a |Trie| or a |Parser| to define a language requires a lot of low-level work,
-since we first need to implement operations such as the union of a language or concatenation.
-The |Regex| representation of regular languages has such operations built-in,
-allowing us to have intuition on the level of grammar rather than operations.
+In this definition for |wpS|, we assume that all effects share access to one mutable variable of type |s|.
+We can allow for more variables by setting |s| to be a product type over the effects.
+With a suitable modification of the predicate transformers,
+we could set it up so that each effect can only modify its own associated variable.
+Thus, the previous definition is not limited in generality by writing it only for one variable.
+
+To give the predicate transformer semantics of the |EParser| effect,
+we need to choose the meaning of failure, for the case where the next character is needed
+and all characters have already been consumed.
+Since we want all results returned by the parser to be correct,
+we use demonic choice and the |ptAll| predicate transformer
+as the semantics for |ENondet|.
+Using |ptAll|'s semantics for the |Fail| command gives the following semantics for the |EParser| effect.
+\begin{code}
+  ptParse : PTS String EParser
+  PTS.pt ptParse Symbol P Nil = ⊤
+  PTS.pt ptParse Symbol P (x :: xs) = P x xs
+\end{code}
+%if style == newcode
+\begin{code}
+  PTS.mono ptParse Symbol P Q imp Nil asm = tt
+  PTS.mono ptParse Symbol P Q imp (x :: xs) asm = imp x xs asm
+  ptAll : ∀ {s} -> PTS s ENondet
+  PTS.pt ptAll Fail P _ = ⊤
+  PTS.pt ptAll Choice P s = P True s ∧ P False s
+  PTS.mono ptAll Fail P Q imp t tt = tt
+  PTS.mono ptAll Choice P Q imp t (fst , snd) = imp _ _ fst , imp _ _ snd
+\end{code}
+%endif
+
+With the predicate transformer semantics of |EParse|,
+we can define the language accepted by a parser in the |Free| monad as a predicate over strings:
+a string |xs| is in the language of a parser |S| if the postcondition ``all characters have been consumed'' is satisfied.
+\begin{code}
+  empty? : (Forall(a)) List a -> Set
+  empty? Nil = ⊤
+  empty? (_ :: _) = ⊥
+
+  _∈[_] : (Forall(a)) String -> Free (ENondet :: EParser :: Nil) a -> Set
+  xs ∈[ S ] = wpS (ptAll :: ptParse :: Nil) S (λ _ -> empty?) xs
+\end{code}
+
+\section{Parsing context-free languages} \label{sec:contextFree}
+In Section \ref{sec:dmatch}, we developed and formally verified a parser for regular languages.
+The class of regular languages is small, and does not include most programming languages.
 A class of languages that is more expressive than the regular languages,
 while remaining tractable in parsing is that of the \emph{context-free language}.
 The expressiveness of context-free languages is enough to cover most programming languages used in practice~\cite{dragon-book}.
@@ -1092,23 +1141,23 @@ open import Relation.Binary
 \begin{code}
 record GrammarSymbols : Set where
   field
-    Nonterminal : Set
-    ⟦_⟧ : Nonterminal -> Set
-    _≟n_ : Decidable {A = Nonterminal} _==_
+    Nonterm : Set
+    ⟦_⟧ : Nonterm -> Set
+    _≟n_ : Decidable {A = Nonterm} _==_
 \end{code}
-The elements of the type |Char| are the \emph{terminal} symbols, for example characters or tokens.
-The elements of the type |Nonterminal| are the \emph{nonterminal} symbols, representing the language constructs.
+The elements of the type |Char| are the \emph{terminal} symbols.
+The elements of the type |Nonterm| are the \emph{nonterminal} symbols, representing the language constructs.
 As for |Char|, we also need to be able to decide the equality of nonterminals.
-The (disjoint) union of |Char| and |Nonterminal| gives all the symbols that we can use in defining the grammar.
+The (disjoint) union of |Char| and |Nonterm| gives all the symbols that we can use in defining the grammar.
 %if style == newcode
 \begin{code}
 module Grammar (gs : GrammarSymbols) where
-  open ContextFree
+  open ContextFree hiding (Symbol)
   open GrammarSymbols gs
 \end{code}
 %endif
 \begin{code}
-  Symbol = Either Char Nonterminal
+  Symbol = Either Char Nonterm
   Symbols = List Symbol
 \end{code}
 For each nonterminal |A|, our goal is to parse a string into a value of type |⟦ A ⟧|,
@@ -1121,158 +1170,38 @@ a production rule for |A| is associated with a \emph{semantic function} that tak
 and returns a value of type |⟦ A ⟧|,
 as expressed by the following type:
 \begin{code}
-  ⟦_∥_⟧ : Symbols -> Nonterminal -> Set
+  ⟦_∥_⟧ : Symbols -> Nonterm -> Set
   ⟦ Nil           ∥ A ⟧ = ⟦ A ⟧
   ⟦ Inl x  :: xs  ∥ A ⟧ = ⟦ xs ∥ A ⟧
   ⟦ Inr B  :: xs  ∥ A ⟧ = ⟦ B ⟧ -> ⟦ xs ∥ A ⟧
 \end{code}
 Now we can define the type of production rules. A rule of the form $A \to B c D$ is represented as |prod A (Inr B :: Inl c :: Inr D :: Nil) f| for some |f|.
 \begin{code}
-  record Production : Set where
+  record Prod : Set where
     constructor prod
     field
-      lhs : Nonterminal
+      lhs : Nonterm
       rhs : Symbols
       sem : ⟦ rhs ∥ lhs ⟧
 \end{code}
 %if style == newcode
 \begin{code}
-  Productions = List Production
+  Prods = List Prod
 \end{code}
 %endif
-We use the abbreviation |Productions| to represent a list of productions,
+We use the abbreviation |Prods| to represent a list of productions,
 and a grammar will consist of the list of all relevant productions.
 
-\section{Parsing as effect}
-%if style == newcode
-\begin{code}
-  open Combinations
-  open Effect
-\end{code}
-%endif
-While we can follow the traditional development of parsers from nondeterministic state,
-algebraic effects allow us to introduce new effects,
-which saves us bookkeeping issues.
-For a description of parsing based on algebraic effects, we introduce a new effect |EParser|,
-and use a state consisting of a |String|.
-The |EParser| effect has one command |Parse|, which either returns the current character in the state (advancing it to the next character) or fails if all characters have been consumed.
-In our current development, we do not need more commands such as an |EOF| command which succeeds only if all characters have been consumed,
-so we do not incorporate them.
-However, in the semantics we will define that parsing was successful if the input string has been completely consumed.
-\begin{code}
-  data CParser : Set where
-    Parse : CParser
-  RParser : CParser -> Set
-  RParser Parse = Char
-  EParser = eff CParser RParser
-
-  parse : (Forall(es)) ⦃ iP : EParser ∈ es ⦄ -> Free es Char
-  parse ⦃ iP ⦄ = Step iP Parse Pure
-\end{code}
-
-Note that |EParse| is not sufficient alone to implement even simple parsers such as |dmatch|:
-we need to be able to choose between parsing the next character or returning a value for the empty string.
-This is why we usually combine |EParser| with the nondeterminism effect |ENondet|.
-However, nondeterminism and parsing is not always enough:
-we also need general recursion to deal with productions of the form |E → E|.
-% We will show that the three effects together suffice to parse any context-free grammar represented by |Productions|.
-
-The denotational semantics of a parser in the |Free| monad are given by handling the effects.
-We give two functions, one returning a |Parser| and one returning a |Trie|.
-\begin{code}
-  toParser : (Forall(a)) Free (ENondet :: EParser :: Nil) a -> Parser a
-  toTrie : (Forall(a)) Free (ENondet :: EParser :: Nil) a -> Trie ∞ a
-
-  toParser (Pure x) Nil = x :: Nil
-  toParser (Pure x) (_ :: _) = Nil
-  toParser (Step ∈Head Fail k) xs = Nil
-  toParser (Step ∈Head Choice k) xs = toParser (k True) xs ++ toParser (k False) xs
-  toParser (Step (∈Tail ∈Head) Parse k) Nil = Nil
-  toParser (Step (∈Tail ∈Head) Parse k) (x :: xs) = toParser (k x) xs
-
-  toTrie (Pure x) = record { ε = x :: Nil ; d_/d_ = λ _ -> emptyTrie }
-  toTrie (Step ∈Head Fail k) = emptyTrie
-  toTrie (Step ∈Head Choice k) = toTrie (k True) ∪t toTrie (k False)
-  toTrie (Step (∈Tail ∈Head) Parse k) = record { ε = Nil ; d_/d_ = λ x -> toTrie (k x) }
-\end{code}
-If we prefer to look at the semantics of parsing as a proposition instead of a function,
-we can use predicate transformers.
-Since the |Parse| effect uses a state consisting of the string to be parsed,
-the predicates depend on this state.
-We modify the definition of |wp| so each |Effect| can access its own state.
-\begin{code}
-  record PTS (s : Set) (e : Effect) : Set where
-    constructor mkPTS
-    field
-      pt : (c : C e) → (R e c → s → Set) → s → Set
-      mono : ∀ c P Q → (∀ x t → P x t → Q x t) → ∀ t → pt c P t → pt c Q t
-
-  data PTSs (s : Set) : List Effect -> Set where
-    Nil : PTSs s Nil
-    _::_ : ∀ {e es} -> PTS s e -> PTSs s es -> PTSs s (e :: es)
-
-  lookupPTS : ∀ {s C R es} (pts : PTSs s es) (i : eff C R ∈ es) -> (c : C) -> (R c -> s -> Set) -> s -> Set
-  lookupPTS (pt :: pts) ∈Head c P t = PTS.pt pt c P t
-  lookupPTS (pt :: pts) (∈Tail i) c P t = lookupPTS pts i c P t
-  lookupMono : ∀ {s C R es} (pts : PTSs s es) (i : eff C R ∈ es) -> ∀ c P P' → (∀ x t → P x t → P' x t) → ∀ t → lookupPTS pts i c P t → lookupPTS pts i c P' t
-  lookupMono (pt :: pts) ∈Head = PTS.mono pt
-  lookupMono (pt :: pts) (∈Tail i) = lookupMono pts i
-
-  wp : ∀ {s es a} -> (pts : PTSs s es) -> Free es a -> (a -> s -> Set) -> s -> Set
-  wp pts (Pure x) P = P x
-  wp pts (Step i c k) P = lookupPTS pts i c (λ x -> wp pts (k x) P)
-\end{code}
-
-To give the predicate transformer semantics of the |EParser| effect,
-we need to choose the meaning of failure, for the case where the next character is needed
-and all characters have already been consumed.
-Since we want all results returned by the parser to be correct,
-we use demonic choice and the |ptAll| predicate transformer
-as the semantics for |ENondet|.
-Using |ptAll|'s semantics for the |Fail| command gives the following semantics for the |EParser| effect.
-\begin{code}
-  ptParse : PTS String EParser
-  PTS.pt ptParse Parse P Nil = ⊤
-  PTS.pt ptParse Parse P (x :: xs) = P x xs
-\end{code}
-%if style == newcode
-\begin{code}
-  PTS.mono ptParse Parse P Q imp Nil asm = tt
-  PTS.mono ptParse Parse P Q imp (x :: xs) asm = imp x xs asm
-  ptAll : ∀ {s} -> PTS s ENondet
-  PTS.pt ptAll Fail P _ = ⊤
-  PTS.pt ptAll Choice P s = P True s ∧ P False s
-  PTS.mono ptAll Fail P Q imp t tt = tt
-  PTS.mono ptAll Choice P Q imp t (fst , snd) = imp _ _ fst , imp _ _ snd
-\end{code}
-%endif
-
-\begin{example}
-With the predicate transformer semantics of |EParse|,
-we can define the language accepted by a parser in the |Free| monad as a predicate over strings:
-a string |xs| is in the language of a parser |S| if the postcondition ``all characters have been consumed'' is satisfied.
-\begin{code}
-  empty? : (Forall(a)) List a -> Set
-  empty? Nil = ⊤
-  empty? (_ :: _) = ⊥
-
-  _∈[_] : (Forall(a)) String -> Free (ENondet :: EParser :: Nil) a -> Set
-  xs ∈[ S ] = wp (ptAll :: ptParse :: Nil) S (λ _ -> empty?) xs
-\end{code}
-\vspace{-2 \baselineskip}
-\end{example}
-
 \section{From abstract grammars to abstract parsers}
-We want to show that the effects |EParser| and |ENondet| are sufficient to parse any context-free grammar,
-using a generally recursive function.
-To show this claim, we implement a function |fromProductions| that constructs a parser for any context-free grammar given as a list of |Production|s,
-then formally verify the correctness of |fromProductions|.
+We want to show that a generally recursive function making use of the effects |EParser| and |ENondet| can parse any context-free grammar.
+To show this claim, we implement a function |fromProds| that constructs a parser for any context-free grammar given as a list of |Prod|s,
+then formally verify the correctness of |fromProds|.
 Our implementation mirrors the definition of the |generateParser| function by \citeauthor{dependent-grammar},
 differing in the naming and in the system that the parser is written in:
 our implementation uses the |Free| monad and algebraic effects, while \citeauthor{dependent-grammar} use a monad |Parser| that is based on parser combinators.
 %if style == newcode
 \begin{code}
-module FromProductions (gs : GrammarSymbols) (prods : Grammar.Productions gs) where
+module FromProds (gs : GrammarSymbols) (prods : Grammar.Prods gs) where
   open GrammarSymbols gs
   open Grammar gs
   open Combinations
@@ -1281,9 +1210,9 @@ module FromProductions (gs : GrammarSymbols) (prods : Grammar.Productions gs) wh
 
 We start by defining two auxiliary types, used as abbreviations in our code.
 \begin{code}
-  FreeParser = Free (eff Nonterminal ⟦_⟧ :: ENondet :: EParser :: Nil)
+  FreeParser = Free (eff Nonterm ⟦_⟧ :: ENondet :: EParser :: Nil)
 
-  record ProductionRHS (A : Nonterminal) : Set where
+  record ProdRHS (A : Nonterm) : Set where
     constructor prodrhs
     field
       rhs : Symbols
@@ -1293,13 +1222,13 @@ We start by defining two auxiliary types, used as abbreviations in our code.
 The core algorithm for parsing a context-free grammar consists of the following functions,
 calling each other in mutual recursion:
 \begin{code}
-  fromProductions  : (A : Nonterminal) -> FreeParser ⟦ A ⟧
-  filterLHS        : (A : Nonterminal) -> Productions -> List (ProductionRHS A)
-  fromProduction   : (Forall(A)) ProductionRHS A -> FreeParser ⟦ A ⟧
-  buildParser      : (Forall(A)) (xs : Symbols) -> FreeParser (⟦ xs ∥ A ⟧ -> ⟦ A ⟧)
-  exact            : (Forall(a)) a -> Char -> FreeParser a
+  fromProds    : (A : Nonterm) -> FreeParser ⟦ A ⟧
+  filterLHS    : (A : Nonterm) -> Prods -> List (ProdRHS A)
+  fromProd     : (Forall(A)) ProdRHS A -> FreeParser ⟦ A ⟧
+  buildParser  : (Forall(A)) (xs : Symbols) -> FreeParser (⟦ xs ∥ A ⟧ -> ⟦ A ⟧)
+  exact        : (Forall(a)) a -> Char -> FreeParser a
 \end{code}
-The main function is |fromProductions|: given a nonterminal,
+The main function is |fromProds|: given a nonterminal,
 it selects the productions with this nonterminal on the left hand side using |filterLHS|,
 and makes a nondeterministic choice between the productions.
 \begin{code}
@@ -1308,33 +1237,34 @@ and makes a nondeterministic choice between the productions.
   ... | yes refl  = prodrhs rhs sem :: filterLHS A ps
   ... | no _      = filterLHS A ps
 
-  fromProductions A = foldr (choice (hiddenInstance(∈Tail ∈Head))) (fail (hiddenInstance(∈Tail ∈Head))) (map fromProduction (filterLHS A prods))
+  fromProds A = foldr (choice (hiddenInstance(∈Tail ∈Head))) (fail (hiddenInstance(∈Tail ∈Head))) (map fromProd (filterLHS A prods))
 \end{code}
 
-The function |fromProduction| takes a single production and tries to parse the input string using this production.
+The function |fromProd| takes a single production and tries to parse the input string using this production.
 It then uses the semantic function of the production to give the resulting value.
 \begin{code}
-  fromProduction (prodrhs rhs sem) = buildParser rhs >>= λ f → Pure (f sem)
+  fromProd (prodrhs rhs sem) = buildParser rhs >>= λ f → Pure (f sem)
 \end{code}
 The function |buildParser| iterates over the |Symbols|, calling |exact| for each literal character symbol,
-and making a recursive |call| to |fromProductions| for each nonterminal symbol.
+and making a recursive |call| to |fromProds| for each nonterminal symbol.
 \begin{code}
   buildParser Nil = Pure id
   buildParser (Inl x  :: xs) = exact tt x >>= λ _ -> buildParser xs
-  buildParser (Inr B  :: xs) = call (hiddenInstance(∈Head)) B >>= (λ x -> buildParser xs >>= λ o -> Pure λ f -> o (f x))
+  buildParser (Inr B  :: xs) = do
+    x <- call (hiddenInstance(∈Head)) B
+    o <- buildParser xs
+    Pure λ f -> o (f x)
 \end{code}
-Finally, |exact| uses the |parse| command to check that the next character in the string is as expected,
+Finally, |exact| uses the |symbol| command to check that the next character in the string is as expected,
 and |fail|s if this is not the case.
 \begin{code}
-  exact x t =
-    parse (hiddenInstance(∈Tail (∈Tail ∈Head))) >>= λ t' →
-    if' t ≟ t' then (hiddenConst(Pure x)) else (hiddenConst(fail (hiddenInstance(∈Tail ∈Head))))
+  exact x t = symbol (hiddenInstance(∈Tail (∈Tail ∈Head))) >>= λ t' → if' t ≟ t' then (hiddenConst(Pure x)) else (hiddenConst(fail (hiddenInstance(∈Tail ∈Head))))
 \end{code}
 
 \section{Partial correctness of the parser}
 Partial correctness of the parser is relatively simple to show,
 as soon as we have a specification.
-Since we want to prove that |fromProductions| correctly parses any given context free grammar given as an element of |Productions|,
+Since we want to prove that |fromProds| correctly parses any given context free grammar given as an element of |Prods|,
 the specification consists of a relation between many sets:
 the production rules, an input string, a nonterminal, the output of the parser, and the remaining unparsed string.
 Due to the many arguments, the notation is unfortunately somewhat unwieldy.
@@ -1347,10 +1277,10 @@ module Correctness (gs : GrammarSymbols) where
   open GrammarSymbols gs
   open Grammar gs
   open Combinations
-  open FromProductions gs using (FreeParser; fromProductions)
+  open FromProds gs using (FreeParser; fromProds)
 
-  data _⊢_∈⟦_⟧=>_,_ (prods : Productions) : String -> (A : Nonterminal) -> ⟦ A ⟧ -> String -> Set
-  data _⊢_~_=>_,_ (prods : Productions) {A : Nonterminal} : String -> (ps : Symbols) -> (⟦ ps ∥ A ⟧ -> ⟦ A ⟧) -> String -> Set
+  data _⊢_∈⟦_⟧=>_,_ (prods : Prods) : String -> (A : Nonterm) -> ⟦ A ⟧ -> String -> Set
+  data _⊢_~_=>_,_ (prods : Prods) {A : Nonterm} : String -> (ps : Symbols) -> (⟦ ps ∥ A ⟧ -> ⟦ A ⟧) -> String -> Set
 \end{code}
 %endif
 
@@ -1388,57 +1318,57 @@ module Correctness (gs : GrammarSymbols) where
 %endif
 %if style == newcode
 \begin{code}
-  parserSpec : (prods : Productions) (A : Nonterminal) (xs : String) -> ⟦ A ⟧ -> String -> Set
+  parserSpec : (prods : Prods) (A : Nonterm) (xs : String) -> ⟦ A ⟧ -> String -> Set
   parserSpec prods A xs o ys = prods ⊢ xs ∈⟦ A ⟧=> o , ys
 
-  pts : Productions -> PTSs (String) _
-  wpFromProd : (Forall(a)) (prods : Productions) -> FreeParser prods a -> (a -> String -> Set) -> String -> Set
+  pts : Prods -> PTSs (String) _
+  wpFromProd : (Forall(a)) (prods : Prods) -> FreeParser prods a -> (a -> String -> Set) -> String -> Set
 \end{code}
 %endif
 With these relations, we can define the specification |parserSpec| to be equal to |_⊢_∈⟦_⟧=>_,_| (up to reordering some arguments),
-and show that |fromProductions| refines this specification.
-For the semantics of general recursion, we also make use of the specification,
-while for the semantics of nondeterminism, we use the |ptAll| semantics to ensure all output is correct.
-This gives the partial correctness term as defined below
+and show that |fromProds| refines this specification.
+To state that the refinement relation holds, we first need to determine the semantics of the effects.
+We choose |ptAll| as the semantics of nondeterminism, since we want to ensure all output of the parser is correct.
 \begin{code}
   pts prods = ptRec (parserSpec prods) :: ptAll :: ptParse :: Nil
 
-  wpFromProd prods = wp (pts prods)
+  wpFromProd prods = wpS (pts prods)
 
-  partialCorrectness : (prods : Productions) (A : Nonterminal) ->
-    wpSpec [[ (hiddenConst(⊤)) , (parserSpec prods A) ]] ⊑ wpFromProd prods (fromProductions prods A)
+  partialCorrectness : (prods : Prods) (A : Nonterm) ->
+    wpSpec [[ (hiddenConst(⊤)) , (parserSpec prods A) ]] ⊑
+      wpFromProd prods (fromProds prods A)
 \end{code}
 
 %if style == newcode
 \begin{code}
   consequence : ∀ {a b s es} (pts : PTSs s es) {P} (mx : Free es a) (f : a -> Free es b) ->
-    ∀ t -> wp pts mx (λ x t -> wp pts (f x) P t) t == wp pts (mx >>= f) P t
+    ∀ t -> wpS pts mx (λ x t -> wpS pts (f x) P t) t == wpS pts (mx >>= f) P t
   consequence pts (Pure x) f t = refl
   consequence pts (Step i c k) f t = cong (λ P -> lookupPTS pts i c P t) (extensionality λ x -> extensionality λ t -> consequence pts (k x) f t)
 
   wpToBind : ∀ {a b s es} {pts : PTSs s es} {P} (mx : Free es a) (f : a -> Free es b) ->
-    ∀ t -> wp pts mx (λ x t -> wp pts (f x) P t) t -> wp pts (mx >>= f) P t
+    ∀ t -> wpS pts mx (λ x t -> wpS pts (f x) P t) t -> wpS pts (mx >>= f) P t
   wpToBind {pts = pts} mx f t H = subst id (consequence pts mx f t) H
 
   wpFromBind : ∀ {a b s es} {pts : PTSs s es} {P} (mx : Free es a) (f : a -> Free es b) ->
-    ∀ t -> wp pts (mx >>= f) P t -> wp pts mx (λ x t -> wp pts (f x) P t) t
+    ∀ t -> wpS pts (mx >>= f) P t -> wpS pts mx (λ x t -> wpS pts (f x) P t) t
   wpFromBind {pts = pts} mx f t H = subst id (sym (consequence pts mx f t)) H
   partialCorrectness prods A P xs H = filterStep prods id A P xs H
     where
-    open FromProductions gs
+    open FromProds gs
 \end{code}
 %endif
 Let us fix the production rules |prods|.
-How do we prove the partial correctness?
-Since the structure of |fromProductions| is of a nondeterministic choice between productions to be parsed,
+How do we prove the partial correctness of a parser for |prods|?
+Since the structure of |fromProds| is of a nondeterministic choice between productions to be parsed,
 and we want to show that all alternatives for a choice result in success,
 we will first give a lemma expressing the correctness of each alternative.
 Correctness in this case is expressed by the semantics of a single production rule,
 i.e. the |_⊢_~_=>_,_| relation.
-Thus, we want to prove a lemma with a type as follows:
+Thus, we want to prove the following lemma:
 \begin{code}
     parseStep : ∀ A xs P str ->
-      ((o : ⟦ xs ∥ A ⟧ -> ⟦ A ⟧) (str' : String) -> prods ⊢ str ~ xs => o , str' -> P o str') ->
+      (∀ o str' -> prods ⊢ str ~ xs => o , str' -> P o str') ->
       wpFromProd prods (buildParser prods xs) P str
 \end{code}
 The lemma can be proved by reproducing the case distinctions used to define |buildParser|;
@@ -1454,19 +1384,19 @@ there is no complication apart from having to use the |wpToBind| lemma to deal w
         (parseStep A xs _ t' λ o' str' Ho' → H _ _ (Call Ho Ho'))
 \end{code}
 
-To combine the |parseStep| for each of the productions in the nondeterministic choice,
+To combine the |parseStep| for each of the productions that the nondeterministic choice is made between,
 it is tempting to define another lemma |filterStep| by induction on the list of productions.
 But we must be careful that the productions that are used in the |parseStep| are the full list |prods|,
 not the sublist |prods'| used in the induction step.
 Additionally, we must also make sure that |prods'| is indeed a sublist,
 since using an incorrect production rule in the |parseStep| will result in an invalid result.
 Thus, we parametrise |filterStep| by a list |prods'| and a proof that it is a sublist of |prods|.
-Again, the proof uses the same distinction as |fromProductions| does,
+Again, the proof uses the same distinction as |fromProds| does,
 and uses the |wpToBind| lemma to deal with the |_>>=_| operator.
 \begin{code}
     filterStep : ∀ prods' -> ((Forall(p)) p ∈ prods' -> p ∈ prods) ->
       ∀ A -> wpSpec [[ (hiddenConst(⊤)) , parserSpec prods A ]] ⊑ wpFromProd prods
-        (foldr (choice (hiddenInstance(∈Tail ∈Head))) (fail (hiddenInstance(∈Tail ∈Head))) (map (fromProduction prods) (filterLHS prods A prods')))
+        (foldr (choice (hiddenInstance(∈Tail ∈Head))) (fail (hiddenInstance(∈Tail ∈Head))) (map (fromProd prods) (filterLHS prods A prods')))
     filterStep Nil subset A P xs H = tt
     filterStep (prod lhs rhs sem :: prods') subset A P xs H with A ≟n lhs
     filterStep (prod .A rhs sem :: prods') subset A P xs (_ , H) | yes refl
@@ -1478,22 +1408,20 @@ and uses the |wpToBind| lemma to deal with the |_>>=_| operator.
 
 With these lemmas, |partialCorrectness| just consists of applying |filterStep| to the subset of |prods| consisting of |prods| itself.
 
-\section{Termination of the parser} \label{sec:fromProductions-terminates}
+\section{Termination of the parser} \label{sec:fromProds-terminates}
 To show termination we need a somewhat more subtle argument:
 since we are able to call the same nonterminal repeatedly,
-termination cannot be shown simply by inspecting the definitions.
+termination cannot be shown simply by inspecting each alternative in the definition.
 Consider the grammar given by $E \rightarrow a E; E \rightarrow b$,
 where we see that the string that matches $E$ in the recursive case is shorter than the original string,
-but the definition itself is of unbounded length.
-Fortunately for us, predicate transformer semantics allow us to give this more subtle definition of termination,
-in the form of the |Termination| type in Definition \ref{def:variant-termination}.
+but the definition itself can be expanded to unbounded length.
 By taking into account the current state, i.e. the string to be parsed, in the variant,
 we can show that a decreasing string length leads to termination.
 
 But not all grammars feature this decreasing string length in the recursive case,
 with the most pathological case being those of the form $E \to E$.
 The issues do not only occur in edge cases: the grammar $E \to E + E; E \to 1$ representing very simple expressions
-will already result in non-termination for |fromProductions|
+will already result in non-termination for |fromProds|
 as it will go in recursion on the first non-terminal without advancing the input string.
 Since the position in the string and current nonterminal together fully determine the state of |fromParsers|,
 it will not terminate.
@@ -1501,7 +1429,7 @@ We need to ensure that the grammars passed to the parser do not allow for such l
 
 Intuitively, the condition on the grammars should be that they are not \emph{left-recursive},
 since in that case, the parser should always advance its position in the string before it encounters the same nonterminal.
-This means that the number of recursive calls to |fromProductions| is bounded
+This means that the number of recursive calls to |fromProds| is bounded
 by the length of the string times the number of different nonterminals occurring in the production rules.
 The type we will use to describe the predicate ``there is no left recursion'' is constructively somewhat stronger:
 we define a left-recursion chain from $A$ to $B$ to be
@@ -1515,29 +1443,29 @@ Moreover, they have implemented this transform, including formal verification, i
 In this work, we assume that the left-corner transform has already been applied if needed,
 so that there is an upper bound on the length of left-recursive chains in the grammar.
 
-We formalize one link of this left-recursive chain in the type |LeftRec|,
-while a list of such links forms the |LeftRecChain| data type.
+We formalize one link of this left-recursive chain in the type |Rec|,
+while a list of such links forms the |Chain| data type.
 % Get rid of the implicit fields.
 \begin{spec}
-  record LeftRec (prods : Productions) (A B : Nonterminal) : Set where
+  record Rec (prods : Prods) (A B : Nonterm) : Set where
     field
       rec : prod A (map Inr xs ++ (Inr B :: ys)) sem ∈ prods
 \end{spec}
-(We leave |xs|, |ys| and |sem| as implicit fields of |LeftRec|, since they are fixed by the type of |rec|.)
+(We leave |xs|, |ys| and |sem| as implicit fields of |Rec|, since they are fixed by the type of |rec|.)
 %if style == newcode
 \begin{code}
-  record LeftRec (prods : Productions) (A B : Nonterminal) : Set where
+  record Rec (prods : Prods) (A B : Nonterm) : Set where
     field
-      {xs} : List Nonterminal
+      {xs} : List Nonterm
       {ys} : List Symbol
       {sem} : _
       rec : prod B (map Inr xs ++ (Inr A :: ys)) sem ∈ prods
 \end{code}
 %endif
 \begin{code}
-  data LeftRecChain (prods : Productions) : Nonterminal -> Nonterminal -> Set where
-    Nil : (Forall(A)) LeftRecChain prods A A
-    _::_ : (Forall(A B C)) LeftRec prods B A -> LeftRecChain prods A C -> LeftRecChain prods B C
+  data Chain (prods : Prods) : Nonterm -> Nonterm -> Set where
+    Nil : (Forall(A)) Chain prods A A
+    _::_ : (Forall(A B C)) Rec prods B A -> Chain prods A C -> Chain prods B C
 \end{code}
 Now we say that a set of productions has no left recursion if all such chains have an upper bound on their length.
 %if style == newcode
@@ -1547,29 +1475,21 @@ Now we say that a set of productions has no left recursion if all such chains ha
 \end{code}
 %endif
 \begin{code}
-  chainLength : (Forall(prods A B)) LeftRecChain prods A B -> Nat
+  chainLength : (Forall(prods A B)) Chain prods A B -> Nat
   chainLength Nil = 0
   chainLength (c :: cs) = Succ (chainLength cs)
 
-  leftRecBound : Productions -> Nat -> Set
-  leftRecBound prods n = (Forall(A B)) (cs : LeftRecChain prods A B) -> chainLength cs < n
+  leftRecBound : Prods -> Nat -> Set
+  leftRecBound prods n = (Forall(A B)) (cs : Chain prods A B) -> chainLength cs < n
 \end{code}
 If we have this bound on left recursion, we are able to prove termination,
-since each call to |fromProductions| will be made either after we have consumed an extra character,
+since each call to |fromProds| will be made either after we have consumed an extra character,
 or it is a left-recursive step, of which there is an upper bound on the sequence.
-Thus, the relation |RecOrder| will work as a recursive variant for |fromProductions|:
-\begin{code}
-  data RecOrder (prods : Productions) : (x y : Nonterminal × String) -> Set where
-    Adv : (Forall(str str' A B)) length str < length str' → RecOrder prods (A , str) (B , str')
-    Rec : (Forall(str str' A B)) length str ≤ length str' → LeftRec prods A B → RecOrder prods (A , str) (B , str')
-\end{code}
 
-\todo{Goede plaats hiervoor?}
+This informal proof fits better with a different notion of termination than in the petrol-driven semantics.
 The petrol-driven semantics are based on a syntactic argument:
 we know a computation terminates because expanding the call tree will eventually result in no more |call|s.
-Termination can also be defined based on a well-foundedness argument,
-such as the size-change principle of Agda's termination checker.
-Thus, we want to say that a recursive definition is well-founded
+Here, we want to capture the notion that a recursive definition terminates
 if all recursive calls are made to a smaller argument, according to a well-founded relation.
 \begin{Def}[\cite{aczel-acc}]
 In intuitionistic type theory, we say that a relation |_≺_| on a type |a| is well-founded if all elements |x : a| are \emph{accessible},
@@ -1590,30 +1510,32 @@ in imperative languages.
 While an invariant is a predicate that is true at the start and end of each looping step,
 the variant is a relation that holds between successive looping steps.
 \begin{Def}
-Given a recursive definition |f : RecArr I es O|,
+Given a recursive definition |f : (RecArr I es O)|,
 a relation |_≺_| on |C| is a recursive \emph{variant} if for each argument |c|,
 and each recursive call made to |c'| in the evaluation of |f c|,
 we have |c' ≺ c|.
 Formally:
 \begin{code}
-  variant' : (Forall(s es C R a)) (pts : PTSs s (eff C R :: es)) (f : (RecArr C es R)) (_≺_ : (C × s) → (C × s) → Set)
+  variant' : (Forall(s es C R a)) (pts : PTSs s (eff C R :: es)) (f : (RecArr C es R))
+    (_≺_ : (C × s) → (C × s) → Set)
     (c : C) (t : s) (S : Free (eff C R :: es) a) → s → Set
   variant' pts f _≺_ c t (Pure x) t' = ⊤
   variant' pts f _≺_ c t (Step ∈Head c' k) t'
-    = ((c' , t') ≺ (c , t)) × lookupPTS pts ∈Head c' (λ x → variant' pts f _≺_ c t (k x)) t'
+    = ((c' , t') ≺ (c , t)) × lookupPTS pts ∈Head c'
+      (λ x → variant' pts f _≺_ c t (k x)) t'
   variant' pts f _≺_ c t (Step (∈Tail i) c' k) t'
     = lookupPTS pts (∈Tail i) c' (λ x → variant' pts f _≺_ c t (k x)) t'
 
-  variant : (Forall(s es C R)) (pts : PTSs s (eff C R :: es)) (f : (RecArr C es R)) → ((C × s) → (C × s) → Set) → Set
+  variant : (Forall(s es C R)) (pts : PTSs s (eff C R :: es)) (f : (RecArr C es R)) →
+    (_≺_ : (C × s) → (C × s) → Set) → Set
   variant (hidden(s)) (hidden(es)) (hidden(C)) (hidden(R)) pts f _≺_ = ∀ c t → variant' pts f _≺_ c t (f c) t
 \end{code}
 \end{Def}
-Note that |variant| depends on the semantics |pt| we give to |f|.
-We cannot derive the semantics in |variant| from the structure of |f|,
+Note that |variant| depends on the semantics |pts| we give to the recursive function |f|.
+We cannot derive the semantics in |variant| from the structure of |f| as we do for the petrol-driven semantics,
 since we do not yet know whether |f| terminates.
-Using |variant|, we can define another termination condition:
-\begin{Def}
-A recursive definition |f| is \emph{well-founded} if it has a variant that is well-founded.
+Using |variant|, we can define another termination condition on |f|:
+there is a well-founded variant for |f|.
 \begin{code}
   record Termination (hidden(s es C R)) (pts : PTSs s (eff C R :: es)) (f : (RecArr C es R)) : Set where
     field
@@ -1621,20 +1543,27 @@ A recursive definition |f| is \emph{well-founded} if it has a variant that is we
       w-f : ∀ c t → Acc _≺_ (c , t)
       var : variant pts f _≺_
 \end{code}
-\end{Def}
-A generally recursive function that terminates in the petrol-driven semantics is also well-founded,
-since a variant is given by the well-order |_<_| on the amount of fuel consumed by each call.
+A generally recursive function that terminates in the petrol-driven semantics also has a well-founded variant,
+given by the well-order |_<_| on the amount of fuel consumed by each call.
 The converse also holds: if we have a descending chain of calls |cs| after calling |f| with argument |c|,
 we can use induction on the type |Acc _≺_ c| to bound the length of |cs|.
 This bound gives the amount of fuel consumed by evaluating a call to |f| on |c|.
 
-With the definition of |RecOrder|, we can complete the correctness proof of |fromProductions|,
+In our case, the relation |RecOrder| will work as a recursive variant for |fromProds|:
+\begin{code}
+  data RecOrder (prods : Prods) : (x y : Nonterm × String) -> Set where
+    Adv : (Forall(str str' A B)) length str < length str' →
+      RecOrder prods (A , str) (B , str')
+    Rec : (Forall(str str' A B)) length str ≤ length str' →
+      Rec prods A B → RecOrder prods (A , str) (B , str')
+\end{code}
+With the definition of |RecOrder|, we can complete the correctness proof of |fromProds|,
 by giving an element of the corresponding |Termination| type.
 We assume that the length of recursion is bounded by |bound : Nat|.
 \begin{code}
-  fromProductionsTerminates : (prods : Productions) (bound : Nat) -> leftRecBound prods bound ->
-    Termination (pts prods) (fromProductions prods)
-  Termination._≺_ (fromProductionsTerminates prods bound H) = RecOrder prods
+  fromProdsTerminates : ∀ prods bound → leftRecBound prods bound ->
+    Termination (pts prods) (fromProds prods)
+  Termination._≺_ (fromProdsTerminates prods bound H) = RecOrder prods
 \end{code}
 To show that the relation |RecOrder| is well-founded,
 we need to show that there is no infinite descending chain starting from some nonterminal |A| and string |str|.
@@ -1646,14 +1575,17 @@ we eventually reach the base case |0| for either.
 If |n| is zero, we have made more than |bound| left-recursive calls, contradicting the assumption that we have bounded left recursion.
 If |k| is zero, we have consumed more than |length str| characters of |str|, also a contradiction.
 \begin{code}
-  Termination.w-f (fromProductionsTerminates prods bound H) A str
+  Termination.w-f (fromProdsTerminates prods bound H) A str
     = acc (go A str (length str) ≤-refl bound Nil ≤-refl)
     where
     go : (Forall(B)) ∀ A str →
       (k : Nat) → length str ≤ k →
-      (n : Nat) (cs : LeftRecChain prods A B) → bound ≤ chainLength cs + n →
+      (n : Nat) (cs : Chain prods A B) → bound ≤ chainLength cs + n →
       ∀ y → RecOrder prods y (A , str) → Acc (RecOrder prods) y
+\end{code}
 
+%if style == newcode
+\begin{code}
     go A Nil Zero ltK n cs H' (A' , str') (Adv ())
     go A (_ :: _) Zero () n cs H' (A' , str') (Adv lt)
 
@@ -1663,13 +1595,10 @@ If |k| is zero, we have consumed more than |length str| characters of |str|, als
       = (λ ()) (<⇒≱ (H cs) (≤-trans H' (≤-reflexive (+-identityʳ _))))
     go A str k ltK (Succ n) cs H' (A' , str') (Rec lt c)
       = acc (go A' str' k (≤-trans lt ltK) n (c :: cs) (≤-trans H' (≤-reflexive (+-suc _ _))))
-\end{code}
 
-%if style == newcode
-\begin{code}
-  Termination.var (fromProductionsTerminates prods bound H) A str = filterStep prods id A str str ≤-refl
+  Termination.var (fromProdsTerminates prods bound H) A str = filterStep prods id A str str ≤-refl
     where
-    open FromProductions gs prods hiding (fromProductions)
+    open FromProds gs prods hiding (fromProds)
 
     variant-fmap : ∀ {a b C R s es _≺_ c t t'} (pts : PTSs s (eff C R :: es)) f S {k : a → b} → variant' pts f _≺_ c t S t' → variant' pts f _≺_ c t (S >>= λ x → Pure (k x)) t'
     variant-fmap pts f (Pure x) H = tt
@@ -1690,29 +1619,34 @@ If |k| is zero, we have consumed more than |length str| characters of |str|, als
     subst2 : ∀ {A} {B : A -> Set} (C : (x : A) -> B x -> Set) {x x' : A} {y : B x} (p : x == x') -> C x y -> C x' (subst B p y)
     subst2 C refl z = z
 
-    nextNonterminal : ∀ {A B Bs xs sem} -> prod A (map Inr Bs ++ (Inr B :: xs)) sem ∈ prods -> prod A (map Inr (Bs ++ (B :: Nil)) ++ xs) (subst (λ xs' -> ⟦ xs' ∥ A ⟧) (map-snoc B Bs xs) sem) ∈ prods
-    nextNonterminal {A} {B} {Bs} {xs} {sem} i = subst2 (λ xs' sem' → prod A xs' sem' ∈ prods) (map-snoc B Bs xs) i
+    nextNonterm : ∀ {A B Bs xs sem} -> prod A (map Inr Bs ++ (Inr B :: xs)) sem ∈ prods -> prod A (map Inr (Bs ++ (B :: Nil)) ++ xs) (subst (λ xs' -> ⟦ xs' ∥ A ⟧) (map-snoc B Bs xs) sem) ∈ prods
+    nextNonterm {A} {B} {Bs} {xs} {sem} i = subst2 (λ xs' sem' → prod A xs' sem' ∈ prods) (map-snoc B Bs xs) i
+
 \end{code}
 %endif
 
-To show that |RecOrder| is a variant for |fromProductions|, we cannot follow the definitions of |fromProductions| as closely as we did for the partial correctness proof.
-We need a complicated case distinction to keep track of the left-recursive chain we have followed in the proof.
+Our next goal is that |RecOrder| is a variant for |fromProds|, as abbreviated by the |prodsVariant| type.
+We cannot follow the definitions of |fromProds| as closely as we did for the partial correctness proof;
+instead we need a complicated case distinction to keep track of the left-recursive chain we have followed in the proof.
 For this reason, we split the |parseStep| apart into two lemmas |parseStepAdv| and |parseStepRec|, both showing that |buildParser| maintains the variant.
-We also use a |filterStep| that calls the correct |parseStep| for each production in the nondeterministic choice.
+We also use a |filterStep| lemma that calls the correct |parseStep| for each production in the nondeterministic choice.
 \begin{code}
+    prodsVariant = variant' (pts prods) (fromProds prods) (RecOrder prods)
+
     parseStepAdv : ∀ A xs str str' → length str' < length str →
-      variant' (pts prods) (fromProductions prods) (RecOrder prods) A str (buildParser (hidden(A = A)) xs) str'
+      prodsVariant A str (buildParser (hidden(A = A)) xs) str'
     parseStepRec : ∀ A xs str str' → length str' ≤ length str →
       ∀ ys (hidden(sem)) -> prod A (map Inr ys ++ xs) sem ∈ prods →
-      variant' (pts prods) (fromProductions prods) (RecOrder prods) A str (buildParser (hidden(A = A)) xs) str'
+      prodsVariant A str (buildParser (hidden(A = A)) xs) str'
     filterStep : ∀ prods' → ((Forall(x)) x ∈ prods' → x ∈ prods) →
       ∀ A str str' → length str' ≤ length str →
-      variant' (pts prods) (fromProductions prods) (RecOrder prods) A str
-        (foldr (choice (hiddenInstance(∈Tail ∈Head))) (fail (hiddenInstance(∈Tail ∈Head))) (map fromProduction (filterLHS A prods')))
+      prodsVariant A str
+        (foldr (choice (hiddenInstance(∈Tail ∈Head))) (fail (hiddenInstance(∈Tail ∈Head))) (map fromProd (filterLHS A prods')))
       str'
 \end{code}
 In the |parseStepAdv|, we deal with the situation that the parser has already consumed at least one character since it was called.
 This means we can repeatedly use the |Adv| constructor of |RecOrder| to show the variant holds.
+%if style == newcode
 \begin{code}
     parseStepAdv A Nil str str' lt = tt
     parseStepAdv A (Inl x :: xs) str Nil lt = tt
@@ -1722,15 +1656,17 @@ This means we can repeatedly use the |Adv| constructor of |RecOrder| to show the
     ... | no ¬p = tt
     parseStepAdv A (Inr B :: xs) str str' lt
       = Adv lt
-      , λ o str'' H → variant-fmap (pts prods) (fromProductions prods) (buildParser xs)
+      , λ o str'' H → variant-fmap (pts prods) (fromProds prods) (buildParser xs)
         (parseStepAdv A xs str str'' (≤-trans (s≤s (consumeString str' str'' B o H)) lt))
 \end{code}
 Here, the lemma |variant-fmap| states that the variant holds for a program of the form |S >>= (Pure ∘ f)| if it does for |S|, since the |Pure| part does not make any recursive calls;
 the lemma |consumeString str' str'' B| states that the string |str''| is shorter than |str'| if |str''| is the left-over string after matching |str''| with nonterminal |B|.
+%endif
 
 In the |parseStepRec|, we deal with the situation that the parser has only encountered nonterminals in the current production.
 This means that we can use the |Rec| constructor of |RecOrder| to show the variant holds until we consume a character,
 after which we call |parseStepAdv| to finish the proof.
+%if style == newcode
 \begin{code}
     parseStepRec A Nil str str' lt ys i = tt
     parseStepRec A (Inl x :: xs) str Nil lt ys i = tt
@@ -1740,12 +1676,13 @@ after which we call |parseStepAdv| to finish the proof.
     ... | no ¬p = tt
     parseStepRec A (Inr B :: xs) str str' lt ys i
       = Rec lt (record { rec = i })
-      , λ o str'' H → variant-fmap (pts prods) (fromProductions prods) (buildParser xs)
+      , λ o str'' H → variant-fmap (pts prods) (fromProds prods) (buildParser xs)
         (parseStepRec A xs str str'' (≤-trans (consumeString str' str'' B o H) lt)
-        (ys ++ (B :: Nil)) (nextNonterminal i))
+        (ys ++ (B :: Nil)) (nextNonterm i))
 \end{code}
-Apart from the previous lemmas, we make use of |nextNonterminal i|,
+Apart from the previous lemmas, we make use of |nextNonterm i|,
 which states that the current production starts with the nonterminals |ys ++ (B :: Nil)|.
+%endif
 
 The lemma |filterStep| shows that the variant holds on all subsets of the production rules,
 analogously to the |filterStep| of the partial correctness proof.
@@ -1754,16 +1691,15 @@ It calls |parseStepRec| since the parser only starts consuming characters after 
     filterStep Nil A str str' lt subset = tt
     filterStep (prod lhs rhs sem :: prods') subset A str str' lt with A ≟n lhs
     ... | yes refl
-      = variant-fmap (pts prods) (fromProductions prods) (buildParser rhs)
+      = variant-fmap (pts prods) (fromProds prods) (buildParser rhs)
         (parseStepRec A rhs str str' lt Nil (subset ∈Head))
         , filterStep prods' (subset ∘ ∈Tail) A str str' lt
     ... | no ¬p = filterStep prods' (subset ∘ ∈Tail) A str str' lt
 \end{code}
-As for partial correctness, the main proposition consists of applying |filterStep| to the subset of |prods| consisting of |prods| itself.
+As for partial correctness, we obtain the proof of termination by applying |filterStep| to the subset of |prods| consisting of |prods| itself.
 
-Having divided the proof into the three lemmas, the remainder is straightforward.
-The proofs of the lemmas use induction on the production rule for |parseStepAdv| and |parseStepRec|,
-and induction on the list of rules for |filterStep|,
-and call each other as indicated.
+\section{Conclusions and discussion}
+
+\todo{Fill this!}
 
 \end{document}

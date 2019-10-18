@@ -43,7 +43,6 @@
 %format top = "\top"
 %format <-> = "\leftrightarrow"
 %format refines = "\sqsubseteq"
-%format subset = "\subseteq"
 %format elem = "\in"
 %format wpEval = wp "_{" eval "}"
 %format wpCR = wp
@@ -136,6 +135,7 @@
 %format _-_ = "\_\!\mathbin{_}\!\_"
 %format ≺ = "\mathbin{\prec}"
 %format _≺_ = "\_\!\mathbin{\prec}\!\_"
+%format Termination._≺_ = Termination. "\_\!\mathbin{\prec}\!\_"
 %format ⇔ = "\mathbin{\iff}"
 %format _⇔_ = "\_\!\mathbin{\iff}\!\_"
 %format ∧ = "\mathbin{\wedge}"
