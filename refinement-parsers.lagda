@@ -37,43 +37,50 @@ P ⊆ Q = ∀ x -> P x -> Q x
 \section{Introduction}
 \label{sec:intro}
 
-Parsing is hard. Despite a great deal of existing tooling and libraries.
-
-There are various ways to write a parser in functional languages---famously using parser combinators.
-% \cite{hutton, swierstra-duponcheel, list-of-successes,others?}
+Parsing is hard, despite a great deal of existing tooling and libraries.
+There are various ways to write a parser in functional languages---famously using parser combinators~
+\cite{hutton, swierstra-duponcheel, list-of-successes,others?}.
 
 How do we ensure that these parser combinators are correct? There are
 several different papers that attempt to answer this
-question %\cite{nils anders danielsson, denis firsov}.
+question~\cite{total-parser-combinators, firsov-certification-context-free-grammars}.
 In this paper, we take a different approach, drawing inspiration from
-recent work on algebraic effects.%\cite{?}
+recent work on algebraic effects~\cite{eff, effect-handlers-in-scope, McBride-totally-free}.
 In particular, we demonstrate how an algebraic treatment of general
 recursion lets us separate the (partial) correctness of the
 combinators from their termination in a clean fashion. Most existing
 proofs require combinators to show that the string being parsed
-decreases, conflating termination and correctness. We aim to provide a
-library
-that\ldots %TODO What is the distinguishing feature of our approach?
+decreases, conflating termination and correctness.
+We aim to split apart various aspects of parsers and their correctness
+into a library of individually useful components.
+With this library, we can easily introduce concepts only when they are needed,
+and do this without having to rework the previous definitions.
+
 Finally, this paper serves an extended example of the recent work on
 using predicate transformers to reason about (combinations of)
-algebraic effects.%\cite ICFP-2019.
+algebraic effects~\cite{pt-semantics-for-effects}.
 
+% If we don't publish the journal article: it's good to mention that we explain something about the WP semantics of effect combinations.
 To these ends, this paper makes the following novel contributions:
 \begin{itemize}
-\item The non-recursive fragment of regular expressions can be parsed
-  using non-determinism (Section 2); additionally parsing the
-  recursive can be done without compromising our previous definitions
-  (Section 3 and 4). Finally, we can prove the termination in the
-  typical fashion using Brzozowski derivatives (Section 5).
+\item The non-recursive fragment of regular expressions can be correctly parsed
+  using non-determinism (Section \ref{sec:regex-nondet});
+  by combining non-determinism with general recursion (Section \ref{sec:combinations}),
+  support for the Kleene star can be added without compromising our previous definitions
+  (Section \ref{sec:regex-rec}). Although the resulting parser is not guaranteed to terminate,
+  it is \emph{refined} by another implementation using Brzozowski derivatives that does terminate
+  (Section \ref{sec:dmatch}).
   
 \item Next, we show how this approach may be extended to handle
-  context-free languages. To do so, we give an account of context-free
-  languages in Agda (Section 6), show how to write parsers using
-  algebraic effects (Section 7), and map grammars to parsers (Section
-  8). Once again, we can cleanly separate the proofs of partial
-  correctness (Section 9) and termination (Section 10).
+  context-free languages. To do so, we show how to write parsers using
+  algebraic effects (Section \ref{sec:parser}), and map grammars to parsers (Section
+  \ref{sec:fromProductions}). Once again, we can cleanly separate the proofs of partial
+  correctness (Section \ref{sec:partialCorrectness}) and termination (Section \ref{sec:fromProds-terminates}).
 \end{itemize}
-All of our results have been formalized in Agda. %TODO link?
+
+We write our programs and proofs in the dependently typed language Agda~\cite{agda-thesis},
+ensuring our work is formally correct.
+%TODO link?
 
 \section{Recap: algebraic effects and predicate transformers}
 Algebraic effects were introduced to allow for incorporating side effects in functional languages.
@@ -189,7 +196,7 @@ so we define it in terms of the predicate transformer associated with the progra
 \end{code}
 %endif
 
-\section{Almost parsing regular languages}
+\section{Almost parsing regular languages} \label{sec:regex-nondet}
 %if style == newcode
 \begin{code}
 open import Data.Char using (Char; _≟_)
@@ -426,7 +433,7 @@ Apart from having to introduce |wpToBind|, the proof essentially follows automat
   matchSound (r *) xs P (() , postH)
 \end{code}
 
-\section{Combining nondeterminism and general recursion}
+\section{Combining nondeterminism and general recursion} \label{sec:combinations}
 The matcher we have defined in the previous section is unfinished,
 since it is not able to handle regular expressions that incorporate the Kleene star.
 The fundamental issue is that the Kleene star allows for arbitrarily many distinct matchings in certain cases.
@@ -597,7 +604,7 @@ In the case of verifying the |match| function, the |Match| relation will play th
 If we use |ptRec R| as a predicate transformer to check that a recursive function satisfies the relation |R|,
 then we are proving \emph{partial correctness}, since we assume each recursive call terminates according to the relation |R|.
 
-\section{Recursively parsing every regular expression}
+\section{Recursively parsing every regular expression} \label{sec:regex-rec}
 
 To deal with the Kleene star, we rewrite |match| as a generally recursive function using a combination of effects.
 Since |match| makes use of |allSplits|, we also rewrite that function to use a combination of effects.
@@ -1036,7 +1043,7 @@ The final major difference is that \citeauthor{harper-regex} uses manual verific
 Although our development takes more work, the correctness proofs give more certainty than the informal arguments made by \citeauthor{harper-regex}.
 In general, choosing between informal reasoning and formal verification will always be a trade-off between speed and accuracy.
 
-\section{Parsing as effect}
+\section{Parsing as effect} \label{sec:parser}
 %if style == newcode
 \begin{code}
 module EParser where
@@ -1164,7 +1171,7 @@ a string |xs| is in the language of a parser |S| if the postcondition ``all char
   xs ∈[ S ] = wpS (ptAll :: ptParse :: Nil) S (λ _ -> empty?) xs
 \end{code}
 
-\section{Parsing context-free languages} \label{sec:contextFree}
+\section{Parsing context-free languages} \label{sec:fromProductions}
 In Section \ref{sec:dmatch}, we developed and formally verified a parser for regular languages.
 The class of regular languages is small, and does not include most programming languages.
 A class of languages that is more expressive than the regular languages,
@@ -1232,7 +1239,6 @@ Now we can define the type of production rules. A rule of the form $A \to B c D$
 We use the abbreviation |Prods| to represent a list of productions,
 and a grammar will consist of the list of all relevant productions.
 
-\section{From abstract grammars to abstract parsers}
 We want to show that a generally recursive function making use of the effects |EParser| and |ENondet| can parse any context-free grammar.
 To show this claim, we implement a function |fromProds| that constructs a parser for any context-free grammar given as a list of |Prod|s,
 then formally verify the correctness of |fromProds|.
@@ -1302,7 +1308,7 @@ and |fail|s if this is not the case.
   exact x t = symbol (hiddenInstance(∈Tail (∈Tail ∈Head))) >>= λ t' → if' t ≟ t' then (hiddenConst(Pure x)) else (hiddenConst(fail (hiddenInstance(∈Tail ∈Head))))
 \end{code}
 
-\section{Partial correctness of the parser}
+\section{Partial correctness of the parser} \label{sec:partialCorrectness}
 Partial correctness of the parser is relatively simple to show,
 as soon as we have a specification.
 Since we want to prove that |fromProds| correctly parses any given context free grammar given as an element of |Prods|,
