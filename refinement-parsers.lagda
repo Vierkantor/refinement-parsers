@@ -277,6 +277,8 @@ If we only want to know whether a string matches a regular expression, we can re
 If we want to know more, we could annotate the regular expression with capture groups,
 and say that the output of the parser maps each capture group to the substring that the capture group matches.
 We can also return a full parse tree, mirroring the structure of the expression.
+In our implementation, we will go for the last option as it provides the most information,
+setting ourselves a more interesting verification goal.
 \begin{code}
 tree : Regex -> Set
 tree Empty          = ⊥
@@ -287,11 +289,12 @@ tree (l · r)        = Pair (tree l) (tree r)
 tree (r *)          = List (tree r)
 \end{code}
 
+Not every value of |tree r| represents a correct parse of a string:
+for example the regex |r = Singleton 'x'| has |'y' : Tree r| as an invalid parse tree.
+This illustrates that |tree| itself is not sufficient to specify parsers.
 In Agda, we can represent the semantics of the |Regex| type
-by giving a relation between a |Regex| and a |String| on the one hand (the input of the matcher),
+by giving a relation between a |Regex| and a |String| on the one hand (the input of the parser),
 and a parse tree on the other hand (the output of the parser).
-Note that the |tree| type itself is not sufficient to represent the semantics,
-since it does not say which strings result in any given parse tree.
 If the |Regex| and |String| do not match, there should be no output,
 otherwise the output consists of all relevant parse trees.
 We give the relation using the following inductive definition:
