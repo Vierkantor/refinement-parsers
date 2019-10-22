@@ -87,7 +87,7 @@ All the programs and proofs in this paper are written in the dependently typed l
 
 \section{Recap: algebraic effects and predicate transformers}
 Algebraic effects separate the \emph{syntax} and \emph{semantics} of
-effectful operations. The syntaxis given by a signature of the operations:
+effectful operations. The syntax is given by a signature of the operations:
 %Wouter: should we replace Effect by Sig?
 \begin{code}
 record Effect : Set where
@@ -96,7 +96,7 @@ record Effect : Set where
     C : Set
     R : C -> Set
 \end{code}
-Here the type |C| captures the 'commands', or effectful operations
+Here the type |C| contains the `commands', or effectful operations
 that a given effect supports. For each command |c : C|, the type |R c|
 describes the possible responses. %TODO cite containers paper
 For example, the following signature describes two operations: the
@@ -128,8 +128,8 @@ corresponding \emph{free monad}:
 This gives a monad, with the bind operator defined as follows:
 \begin{code}
   _>>=_ : (Forall(a b e)) Free e a -> (a -> Free e b) -> Free e b
-  Pure x >>= f = f x
-  Step c k >>= f = Step c (λ x -> k x >>= f)
+  Pure x    >>= f = f x
+  Step c k  >>= f = Step c (λ x -> k x >>= f)
 \end{code}
 %if style == newcode
 \begin{code}
