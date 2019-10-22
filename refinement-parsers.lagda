@@ -54,24 +54,17 @@ non-determinism to handle backtracking; and general recursion to
 handle recursive grammars.
 
 We demonstrate how to reason about all these effects uniformly using
-\emph{predicate transformers}~\cite{pt-semantics-for-effects}. In particular, our careful treatment
+\emph{predicate transformers}~\cite{pt-semantics-for-effects}.
+We extend previous work that uses predicate transformer semantics to reason about one effect,
+assigning predicate transformer semantics to a combination of effects.
+Our semantics is modular, allowing us to introduce concepts only when they are needed,
+and do this without having to rework the previous definitions.
+In particular, our careful treatment
 of general recursion lets us separate the (partial) correctness of the
 combinators from their termination in a clean fashion. Most existing
 proofs require combinators to show that the string being parsed
 decreases, conflating termination and correctness.
-% Wouter: zoals dit er nu staat is het niets echt iets nieuws, eerder
-% een doel -- kunnen we dit positiever formuleren als contributie?
-% We aim to split
-% apart various aspects of parsers and their correctness into a library
-% of individually useful components.  With this library, we can easily
-% introduce concepts only when they are needed, and do this without
-% having to rework the previous definitions.
 
-% If we don't publish the journal article: it's good to mention that we explain something about the WP semantics of effect combinations.
-% Wouter: we can say this now too. The journal article will probably have a slightly
-% different take. Furthermore, it will probably be submitted later; and finally,
-% journal articles have less stringent requirements on the 'novelty' -- providing
-% an overview of recent work in a journal paper can also warrant publication.
 In particular, this paper makes the following novel contributions:
 \begin{itemize}
 \item The non-recursive fragment of regular expressions can be correctly parsed
