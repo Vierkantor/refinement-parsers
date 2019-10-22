@@ -37,31 +37,42 @@ P ⊆ Q = ∀ x -> P x -> Q x
 \section{Introduction}
 \label{sec:intro}
 
-Parsing is hard, despite a great deal of existing tooling and libraries.
-There are various ways to write a parser in functional languages---famously using parser combinators~
-\cite{hutton, swierstra-duponcheel, list-of-successes,others?}.
-
-How do we ensure that these parser combinators are correct? There are
-several different papers that attempt to answer this
+There is a significant body of work on parser combinators
+\cite{hutton, swierstra-duponcheel, list-of-successes,others?},
+% TODO Check het paper van Nils anders danielsson voor een veeeel langere lijst
+% met referenties over parser combinators
+typically defined in a lazy functional programming language. 
+Yet how can we ensure that these parsers are correct? There is notably
+less work that attempts to  answer this
 question~\cite{total-parser-combinators, firsov-certification-context-free-grammars}.
-In this paper, we take a different approach, drawing inspiration from
-recent work on algebraic effects~\cite{eff, effect-handlers-in-scope, McBride-totally-free}.
-In particular, we demonstrate how an algebraic treatment of general
-recursion lets us separate the (partial) correctness of the
+
+In this paper, we explore a novel approach, drawing inspiration from
+recent work on algebraic effects~\cite{eff, effect-handlers-in-scope,
+  McBride-totally-free}.  Parser combinators typically use a
+combination of effects: state to store the string being parsed;
+non-determinism to handle backtracking; and general recursion to
+handle recursive grammars.
+
+We demonstrate how to reason about all these effects uniformly using
+\emph{predicate transformers}~\cite{pt-semantics-for-effects}. In particular, our careful treatment
+of general recursion lets us separate the (partial) correctness of the
 combinators from their termination in a clean fashion. Most existing
 proofs require combinators to show that the string being parsed
 decreases, conflating termination and correctness.
-We aim to split apart various aspects of parsers and their correctness
-into a library of individually useful components.
-With this library, we can easily introduce concepts only when they are needed,
-and do this without having to rework the previous definitions.
-
-Finally, this paper serves an extended example of the recent work on
-using predicate transformers to reason about (combinations of)
-algebraic effects~\cite{pt-semantics-for-effects}.
+% Wouter: zoals dit er nu staat is het niets echt iets nieuws, eerder
+% een doel -- kunnen we dit positiever formuleren als contributie?
+% We aim to split
+% apart various aspects of parsers and their correctness into a library
+% of individually useful components.  With this library, we can easily
+% introduce concepts only when they are needed, and do this without
+% having to rework the previous definitions.
 
 % If we don't publish the journal article: it's good to mention that we explain something about the WP semantics of effect combinations.
-To these ends, this paper makes the following novel contributions:
+% Wouter: we can say this now too. The journal article will probably have a slightly
+% different take. Furthermore, it will probably be submitted later; and finally,
+% journal articles have less stringent requirements on the 'novelty' -- providing
+% an overview of recent work in a journal paper can also warrant publication.
+In particular, this paper makes the following novel contributions:
 \begin{itemize}
 \item The non-recursive fragment of regular expressions can be correctly parsed
   using non-determinism (Section \ref{sec:regex-nondet});
@@ -78,20 +89,27 @@ To these ends, this paper makes the following novel contributions:
   correctness (Section \ref{sec:partialCorrectness}) and termination (Section \ref{sec:fromProds-terminates}).
 \end{itemize}
 
-We write our programs and proofs in the dependently typed language Agda~\cite{agda-thesis},
-ensuring our work is formally correct.
+All the programs and proofs in this paper are written in the dependently typed language Agda~\cite{agda-thesis}.
 %TODO link?
 
 \section{Recap: algebraic effects and predicate transformers}
-Algebraic effects were introduced to allow for incorporating side effects in functional languages.
-For example, the effect |ENondet| allows for nondeterministic programs:
+Algebraic effects separate the \emph{syntax} and \emph{semantics} of
+effectful operations. The syntaxis given by a signature of the operations:
+%Wouter: should we replace Effect by Sig?
 \begin{code}
 record Effect : Set where
   constructor eff
   field
     C : Set
     R : C -> Set
-
+\end{code}
+Here the type |C| captures the 'commands', or effectful operations
+that a given effect supports. For each command |c : C|, the type |R c|
+describes the possible responses. %TODO cite containers paper
+For example, the following signature describes two operations: the
+non-deterministic choice between two values, |Choice|; and a failure
+operator, |Fail|.
+\begin{code}    
 data CNondet : Set where
   Fail : CNondet
   Choice : CNondet
@@ -101,14 +119,14 @@ RNondet Choice = Bool
 
 ENondet = eff CNondet RNondet
 \end{code}
-
 %if style == newcode
 \begin{code}
 module NoCombination where
   open Effect
 \end{code}
 %endif
-We represent effectful programs using the |Free| datatype.
+We represent effectful programs that use a particular effect using the
+corresponding \emph{free monad}:
 \begin{code}
   data Free (e : Effect) (a : Set) : Set where
     Pure : a -> Free e a
@@ -126,24 +144,32 @@ This gives a monad, with the bind operator defined as follows:
   f <$> mx = mx >>= λ x → Pure (f x)
 \end{code}
 %endif
-The easiest way to use effects is with smart constructors:
+To facilitate programming with effects, we define the following smart
+constructors, sometimes referred to as \emph{generic effects} in the
+literature on algebraic effects:
 \begin{code}
   fail : (Forall(a)) Free ENondet a
   fail = Step Fail λ ()
   choice : (Forall(a)) Free ENondet a -> Free ENondet a -> Free ENondet a
   choice S₁ S₂ = Step Choice λ b -> if b then S₁ else S₂
 \end{code}
-
-To give specifications of programs that incorporate effects,
-we can use predicate transformers.
+In this paper, we will assign \emph{semantics} to effectful programs
+by mapping them to \emph{predicate transformers}.
+% TODO: ik zou dit niet wp noemen. Eerder iets als ⟦_⟧ -- er is immers
+% geen input waarvoor de preconditie moet gelden
+% bovendien zou ik de volgorde van de argumenten omdraaien:
+% (a -> Set) -> (Free (eff C R) a -> Set)
+% dit is makkelijker te herkennen als predicate transformer
 \begin{code}
   wp : {C : Set} {R : C -> Set} -> ((c : C) -> (R c -> Set) -> Set) ->
     {a : Set} -> Free (eff C R) a -> (a -> Set) -> Set
   wp alg (Pure x) P = P x
   wp alg (Step c k) P = alg c λ x -> wp alg (k x) P
 \end{code}
-Interestingly, these predicate transformers are exactly the catamorphisms from |Free| to |Set|.
-
+This semantics is given by a catamorphism over the free monad,
+computing the proposition that captures the programs semantics. For
+non-determinism, for example, we may want to require that a given
+predicate |P| holds for all possible results that may be returned: 
 %if style == newcode
 \begin{code}
 module Nondet where
@@ -151,8 +177,8 @@ module Nondet where
 %endif
 \begin{code}
   ptAll : (c : CNondet) -> (RNondet c -> Set) -> Set
-  ptAll Fail P = ⊤
-  ptAll Choice P = P True ∧ P False
+  ptAll Fail P    = ⊤
+  ptAll Choice P  = P True ∧ P False
 \end{code}
 
 %if style == newcode
@@ -167,9 +193,9 @@ module NoCombination2 where
   wpNondetAll S P = wp ptAll S P
 \end{code}
 
-We use pre- and postconditions to give a specification for a program.
-If the precondition holds on the input,
-the program needs to ensure the postcondition holds on the output.
+Using these semantics, we will relate programs to their
+specifications. The specifications we will consider throughout this
+paper consist of a pre- and postcondition. 
 \begin{code}
 module Spec where
   record Spec (a : Set) : Set where
@@ -177,18 +203,29 @@ module Spec where
     field
       pre : Set
       post : a -> Set
-
+\end{code}
+Just as we did for our effects, we can also assign a predicate
+transformer semantics to our specifications:
+\begin{code}    
   wpSpec : (Forall(a)) Spec a -> (a -> Set) -> Set
   wpSpec [[ pre , post ]] P = pre ∧ (∀ o -> post o -> P o)
 \end{code}
+This computes the `weakest precondition' necessary for a specification
+to imply that the desired postcondition |P| holds. In particular, the
+precondition |pre| should hold and any possible result satisfying the
+postcondition |post| should imply the postcondition |P|.
 
-The refinement relation expresses when one program is ``better'' than another.
-We need to take into account the semantics we want to impose on the program,
-so we define it in terms of the predicate transformer associated with the program.
+Finally, we can relate programs and specifications using the following
+\emph{refinement relation}:
 \begin{code}
   _⊑_ : (Forall(a : Set)) (pt1 pt2 : (a -> Set) -> Set) -> Set
   pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
 \end{code}
+By mapping programs and specifications to their corresponding
+predicate transformers.
+
+It is easy to show that this relation is both transitive and
+reflexive.
 %if style == newcode
 \begin{code}
   ⊑-refl : (Forall(a)) {pt : (a -> Set) -> Set} -> pt ⊑ pt
