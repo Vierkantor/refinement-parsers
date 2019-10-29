@@ -207,16 +207,16 @@ to imply that the desired postcondition |P| holds. In particular, the
 precondition |pre| should hold and any possible result satisfying the
 postcondition |post| should imply the postcondition |P|.
 
-Finally, we can relate programs and specifications using the following
-\emph{refinement relation}:
+Finally, we use the \emph{refinement relation} to compare programs and specifications:
 \begin{code}
   _⊑_ : (Forall(a : Set)) (pt1 pt2 : (a -> Set) -> Set) -> Set
   pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
 \end{code}
+A program or specification |S₁| is refined by |S₂| if |S₂| is ``better'' in the following way:
+all postconditions that |S₁| can make true, |S₂| can also make true.
 By mapping programs and specifications to their corresponding
-predicate transformers.
-
-It is easy to show that this relation is both transitive and
+predicate transformers, the verification process can treat them uniformly.
+It is easy to show that the refinement relation is both transitive and
 reflexive.
 %if style == newcode
 \begin{code}
@@ -399,6 +399,7 @@ we need to determine its semantics: is the nondeterminism angelic or demonic?
 Since the use of nondeterminism in |match| is to find all correct matches,
 we want that all values potentially returned are correct,
 as specified by the |ptAll| semantics used in |wpNondetAll|.
+We conclude that our goal is to prove |wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)|.
 
 If we now try to give a correctness proof with respect to this pre- and postcondition,
 we run into an issue in cases where the definition makes use of the |_>>=_| operator.
@@ -415,15 +416,20 @@ which is also known as the law of consequence for traditional predicate transfor
   consequence pt (Pure x) f = refl
   consequence pt (Op c k) f = cong (pt c)
     (extensionality λ x -> consequence pt (k x) f)
-
+\end{code}
+Substituting along this equality gives us the lemmas we need to deal with the |_>>=_| operator:
+\begin{code}
   wpToBind : (Forall (a b es pt P)) (mx : Free es a) (f : a -> Free es b) ->
     wp pt mx (λ x -> wp pt (f x) P) -> wp pt (mx >>= f) P
-  wpToBind (hidden(pt = pt)) mx f H = subst id (consequence pt mx f) H
-
   wpFromBind : (Forall (a b es pt P)) (mx : Free es a) (f : a -> Free es b) ->
     wp pt (mx >>= f) P -> wp pt mx (λ x -> wp pt (f x) P)
+\end{code}
+%if style == newcode
+\begin{code}
+  wpToBind (hidden(pt = pt)) mx f H = subst id (consequence pt mx f) H
   wpFromBind (hidden(pt = pt)) mx f H = subst id (sym (consequence pt mx f)) H
 \end{code}
+%endif
 
 The correctness proof for |match| closely matches the structure of |match| (and by extension |allSplits|).
 It uses the same recursion on |Regex| as in the definition of |match|.
@@ -470,34 +476,34 @@ The matcher we have defined in the previous section is unfinished,
 since it is not able to handle regular expressions that incorporate the Kleene star.
 The fundamental issue is that the Kleene star allows for arbitrarily many distinct matchings in certain cases.
 For example, matching |Epsilon *| with the empty string |""| will allow for repeating the |Epsilon| arbitrarily often, since |Epsilon · (Epsilon *)| is equivalent to both |Epsilon| and |Epsilon *|.
-Thus, we cannot implement |match| on the |_*| operator by helping Agda's termination checker.
+Thus, we cannot implement |match| on the |_*| operator in the naïve way.
 
 What we will do instead is to deal with the recursion as an effect.
 A recursively defined (dependent) function of type |(i : I) -> O i|
 can instead be given as an element of the type |(i : I) -> Free (Rec I O) (O i)|,
-where |Rec I O| is the effect of \emph{general recursion}~\cite{McBride-totally-free}:
+where |Rec I O| is the signature of \emph{general recursion}~\cite{McBride-totally-free}:
 \begin{code}
 Rec : (I : Set) (O : I -> Set) -> Sig
 Rec I O = mkSig I O
 \end{code}
 
-Defining |match| with the |Rec| effect is not sufficient to implement it fully either,
-since replacing the effect |Nondet| with |Rec| does not allow for nondeterminism anymore,
-so while the Kleene star might work, the other parts of |match| do not work anymore.
+Defining |match| in the |Free (Rec _ _)| monad is not sufficient to implement it fully either,
+since replacing the effect |Nondet| with |Rec| does not allow for nondeterminism anymore.
+While the Kleene star might work, the other parts of |match| do not work anymore.
 We need a way to combine effects.
 
-We can combine two effects in a straightforward way: given |mkSig C₁ R₁| and |mkSig C₂ R₂|,
-we can define a new effect by taking the disjoint union of the commands and responses,
+We can combine two effects in a straightforward way: given signatures |mkSig C₁ R₁| and |mkSig C₂ R₂|,
+we can define a combined signature by taking the disjoint union of the commands and responses,
 resulting in |mkSig (Either C₁ C₂) [ R₁ , R₂ ]|,
-where |[ R₁ , R₂ ]| is the unique map given by applying |R₁| to values in |C₁| and |R₂| to |C₂|~\cite{effect-handlers-in-scope}.
+where |[ R₁ , R₂ ]| is the unique map given by applying |R₁| to values in |C₁| and |R₂| on |C₂|~\cite{effect-handlers-in-scope}.
 If we want to support more effects, we can repeat this process of disjoint unions,
 but this quickly becomes somewhat cumbersome.
 For example, the disjount union construction is associative semantically, but not syntactically.
 If two programs have the same set of effects that is associated differently, we cannot directly compose them.
 
-Instead of building a new effect type, we modify the |Free| monad to take a list of effects instead of a single effect.
+Instead of building a new effect type, we modify the |Free| monad to take a list of signatures instead of a single signature.
 The |Pure| constructor remains as it is,
-while the |Op| constructor takes an index into the list of effects and the command and continuation for the effect with this index.
+while the |Op| constructor additionally takes an index into the list to specify which effect is invoked.
 %if style == newcode
 \begin{code}
 module Combinations where
@@ -587,17 +593,17 @@ module Stateless where
 
   data PTs : List Sig -> Set where
     Nil : PTs Nil
-    _::_ : ∀ {e es} -> PT e -> PTs es -> PTs (e :: es)
+    _::_ : (Forall(e es)) PT e -> PTs es -> PTs (e :: es)
 \end{code}
 The record type |PT| not only contains a predicate transformer |pt|,
 but also a proof that |pt| is monotone in its predicate.
-The requirement of monotonicity is needed to prove some lemmas later on \todo{which exactly?},
+The requirement of monotonicity is needed to prove the lemma |terminates-fmap| we introduce later,
 and makes intuitive sense: if the precondition holds for a certain postcondition,
 a weaker postcondition should also have its precondition hold.
 
 Given a such a list of predicate transformers,
 defining the semantics of an effectful program is a straightforward generalization of |wp|.
-The |Pure| case is identical, and in the |Op| case we find the predicate transformer at the corresponding index to the effect index |i : e ∈ es| using the |lookupPT| helper function.
+The |Pure| case is identical, and in the |Op| case we can apply the predicate transformer returned by the |lookupPT| helper function.
 \begin{code}
   lookupPT : (Forall(C R es)) (pts : PTs es) (i : mkSig C R ∈ es) ->
     (c : C) -> (R c -> Set) -> Set
@@ -624,7 +630,7 @@ However, it is not as easy to give a predicate transformer for general recursion
 since the intended semantics of a recursive call depend
 on the function that is being called, i.e. the function that is being defined.
 
-However, if we have a specification of a function of type |(i : I) -> O i|,
+As long as we have a specification of a function of type |(i : I) -> O i|,
 for example in terms of a relation of type |(i : I) -> O i -> Set|,
 we are able to define a predicate transformer:
 \begin{code}
@@ -634,7 +640,8 @@ we are able to define a predicate transformer:
 \end{code}
 In the case of verifying the |match| function, the |Match| relation will play the role of |R|.
 If we use |ptRec R| as a predicate transformer to check that a recursive function satisfies the relation |R|,
-then we are proving \emph{partial correctness}, since we assume each recursive call terminates according to the relation |R|.
+then we are proving \emph{partial correctness}, since we assume each recursive call succesfully returns
+a correct value according to the relation |R|.
 
 \section{Recursively parsing every regular expression} \label{sec:regex-rec}
 
