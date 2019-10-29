@@ -1786,10 +1786,33 @@ It calls |parseStepRec| since the parser only starts consuming characters after 
 \end{code}
 As for partial correctness, we obtain the proof of termination by applying |filterStep| to the subset of |prods| consisting of |prods| itself.
 
-\section{Conclusions and discussion}
+\section{Discussion}
 
-\todo{Fill this!}
+In this paper, we have verified several parsing algorithms,
+mirroring work by \citet{harper-regex, total-parser-combinators, firsov-certification-context-free-grammars}, among others. 
+% TODO: discuss related work
+% perhaps also Validating LR(1) Parsers https://link.springer.com/chapter/10.1007/978-3-642-28869-2_20
+Our work is characterised by its modularity,
+allowing us to introduce the combination of effects, petrol-driven termination, semantics for state and variant-based termination without impacting existing definitions.
+We strictly separate the syntax and semantics of the programs,
+and partial correctness from termination.
+This results in verification proofs that do not need to carry around many goals,
+allowing most of them to consist of unfolding the definition and filling in the obvious terms.
 
+In the process of this verification, we have solved some open issues in the area of predicate transformer semantics and leave others open.
+\citet{pt-semantics-for-effects} mention two avenues of further work that our work makes advances on: the semantics for combinations of effects
+and the verification of non-trivial programs using algebraic effects.
+Still, we chose to verify parsers with applying predicate transformers to them in the back of our mind,
+so the goal of verifying a practical program remains a step further.
+% Perhaps a translation of ``er valt iets af te dingen aan het idee dat we een praktisch programma verifiëren'' is more apt.
+
+% TODO: discuss further work: (interaction of) handlers, efficiency, more?
+
+We should also note that the engineering effort expected by \citeauthor{pt-semantics-for-effects} has not been needed for our paper.
+The optimist can conclude that the elegance of our framework caused it to prevent the feared level of complication;
+the pessimist can conclude that the real hard work will be required as soon as we encounter a real-world application.
+
+\printbibliography
 \end{document}
 
 %%% Local Variables:
