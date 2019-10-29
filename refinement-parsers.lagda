@@ -88,10 +88,9 @@ All the programs and proofs in this paper are written in the dependently typed l
 \section{Recap: algebraic effects and predicate transformers}
 Algebraic effects separate the \emph{syntax} and \emph{semantics} of
 effectful operations. The syntax is given by a signature of the operations:
-%Wouter: should we replace Effect by Sig?
 \begin{code}
-record Effect : Set where
-  constructor eff
+record Sig : Set where
+  constructor mkSig
   field
     C : Set
     R : C -> Set
@@ -110,26 +109,26 @@ RNondet : CNondet -> Set
 RNondet Fail = ⊥
 RNondet Choice = Bool
 
-ENondet = eff CNondet RNondet
+Nondet = mkSig CNondet RNondet
 \end{code}
 %if style == newcode
 \begin{code}
 module NoCombination where
-  open Effect
+  open Sig
 \end{code}
 %endif
 We represent effectful programs that use a particular effect using the
 corresponding \emph{free monad}:
 \begin{code}
-  data Free (e : Effect) (a : Set) : Set where
+  data Free (e : Sig) (a : Set) : Set where
     Pure : a -> Free e a
-    Step : (c : C e) -> (R e c -> Free e a) -> Free e a
+    Op : (c : C e) -> (R e c -> Free e a) -> Free e a
 \end{code}
 This gives a monad, with the bind operator defined as follows:
 \begin{code}
   _>>=_ : (Forall(a b e)) Free e a -> (a -> Free e b) -> Free e b
   Pure x    >>= f = f x
-  Step c k  >>= f = Step c (λ x -> k x >>= f)
+  Op c k    >>= f = Op c (λ x -> k x >>= f)
 \end{code}
 %if style == newcode
 \begin{code}
@@ -141,23 +140,23 @@ To facilitate programming with effects, we define the following smart
 constructors, sometimes referred to as \emph{generic effects} in the
 literature on algebraic effects:
 \begin{code}
-  fail : (Forall(a)) Free ENondet a
-  fail = Step Fail λ ()
-  choice : (Forall(a)) Free ENondet a -> Free ENondet a -> Free ENondet a
-  choice S₁ S₂ = Step Choice λ b -> if b then S₁ else S₂
+  fail : (Forall(a)) Free Nondet a
+  fail = Op Fail λ ()
+  choice : (Forall(a)) Free Nondet a -> Free Nondet a -> Free Nondet a
+  choice S₁ S₂ = Op Choice λ b -> if b then S₁ else S₂
 \end{code}
 In this paper, we will assign \emph{semantics} to effectful programs
 by mapping them to \emph{predicate transformers}.
 % TODO: ik zou dit niet wp noemen. Eerder iets als ⟦_⟧ -- er is immers
 % geen input waarvoor de preconditie moet gelden
 % bovendien zou ik de volgorde van de argumenten omdraaien:
-% (a -> Set) -> (Free (eff C R) a -> Set)
+% (a -> Set) -> (Free (mkSig C R) a -> Set)
 % dit is makkelijker te herkennen als predicate transformer
 \begin{code}
   wp : {C : Set} {R : C -> Set} -> ((c : C) -> (R c -> Set) -> Set) ->
-    {a : Set} -> Free (eff C R) a -> (a -> Set) -> Set
+    {a : Set} -> Free (mkSig C R) a -> (a -> Set) -> Set
   wp alg (Pure x) P = P x
-  wp alg (Step c k) P = alg c λ x -> wp alg (k x) P
+  wp alg (Op c k) P = alg c λ x -> wp alg (k x) P
 \end{code}
 This semantics is given by a catamorphism over the free monad,
 computing the proposition that captures the programs semantics. For
@@ -182,7 +181,7 @@ module NoCombination2 where
 \end{code}
 %endif
 \begin{code}
-  wpNondetAll : (Forall(a)) Free ENondet a -> (a -> Set) -> Set
+  wpNondetAll : (Forall(a)) Free Nondet a -> (a -> Set) -> Set
   wpNondetAll S P = wp ptAll S P
 \end{code}
 
@@ -234,7 +233,7 @@ String = List Char
 \end{code}
 %endif
 To see how we can use the |Free| monad for writing and verifying a parser,
-and more specifically how we use the |ENondet| effect for writing
+and more specifically how we use the |Nondet| effect for writing
 and the |wpNondetAll| semantics for verifying a parser,
 we will look at parsing a given regular language.
 Our approach is first to define the specification of a parser,
@@ -342,7 +341,7 @@ module AlmostRegex where
 \end{code}
 %endif
 \begin{code}
-  allSplits : (Forall(a)) (xs : List a) -> Free ENondet (List a × List a)
+  allSplits : (Forall(a)) (xs : List a) -> Free Nondet (List a × List a)
   allSplits Nil = Pure (Nil , Nil)
   allSplits (x :: xs) = choice
     (Pure (Nil , (x :: xs)))
@@ -352,7 +351,7 @@ module AlmostRegex where
 Armed with this helper function, we can write the first part of a nondeterministic regular expression matcher,
 that does a case distinction on the expression and then checks that the string has the correct format.
 \begin{code}
-  match : (r : Regex) (xs : String) -> Free ENondet (tree r)
+  match : (r : Regex) (xs : String) -> Free Nondet (tree r)
   match Empty xs = fail
   match Epsilon Nil = Pure tt
   match Epsilon (_ :: _) = fail
@@ -414,7 +413,7 @@ which is also known as the law of consequence for traditional predicate transfor
   consequence : (Forall(a b es P)) ∀ pt (mx : Free es a) (f : a -> Free es b) ->
     wp pt mx (λ x -> wp pt (f x) P) == wp pt (mx >>= f) P
   consequence pt (Pure x) f = refl
-  consequence pt (Step c k) f = cong (pt c)
+  consequence pt (Op c k) f = cong (pt c)
     (extensionality λ x -> consequence pt (k x) f)
 
   wpToBind : (Forall (a b es pt P)) (mx : Free es a) (f : a -> Free es b) ->
@@ -475,21 +474,21 @@ Thus, we cannot implement |match| on the |_*| operator by helping Agda's termina
 
 What we will do instead is to deal with the recursion as an effect.
 A recursively defined (dependent) function of type |(i : I) -> O i|
-can instead be given as an element of the type |(i : I) -> Free (ERec I O) (O i)|,
-where |ERec I O| is the effect of \emph{general recursion}~\cite{McBride-totally-free}:
+can instead be given as an element of the type |(i : I) -> Free (Rec I O) (O i)|,
+where |Rec I O| is the effect of \emph{general recursion}~\cite{McBride-totally-free}:
 \begin{code}
-ERec : (I : Set) (O : I -> Set) -> Effect
-ERec I O = eff I O
+Rec : (I : Set) (O : I -> Set) -> Sig
+Rec I O = mkSig I O
 \end{code}
 
-Defining |match| with the |ERec| effect is not sufficient to implement it fully either,
-since replacing the effect |ENondet| with |ERec| does not allow for nondeterminism anymore,
+Defining |match| with the |Rec| effect is not sufficient to implement it fully either,
+since replacing the effect |Nondet| with |Rec| does not allow for nondeterminism anymore,
 so while the Kleene star might work, the other parts of |match| do not work anymore.
 We need a way to combine effects.
 
-We can combine two effects in a straightforward way: given |eff C₁ R₁| and |eff C₂ R₂|,
+We can combine two effects in a straightforward way: given |mkSig C₁ R₁| and |mkSig C₂ R₂|,
 we can define a new effect by taking the disjoint union of the commands and responses,
-resulting in |eff (Either C₁ C₂) [ R₁ , R₂ ]|,
+resulting in |mkSig (Either C₁ C₂) [ R₁ , R₂ ]|,
 where |[ R₁ , R₂ ]| is the unique map given by applying |R₁| to values in |C₁| and |R₂| to |C₂|~\cite{effect-handlers-in-scope}.
 If we want to support more effects, we can repeat this process of disjoint unions,
 but this quickly becomes somewhat cumbersome.
@@ -498,17 +497,17 @@ If two programs have the same set of effects that is associated differently, we 
 
 Instead of building a new effect type, we modify the |Free| monad to take a list of effects instead of a single effect.
 The |Pure| constructor remains as it is,
-while the |Step| constructor takes an index into the list of effects and the command and continuation for the effect with this index.
+while the |Op| constructor takes an index into the list of effects and the command and continuation for the effect with this index.
 %if style == newcode
 \begin{code}
 module Combinations where
-  open Effect
+  open Sig
 \end{code}
 %endif
 \begin{code}
-  data Free (es : List Effect) (a : Set) : Set where
+  data Free (es : List Sig) (a : Set) : Set where
     Pure : a -> Free es a
-    Step : (hidden(e : Effect)) (i : e ∈ es) (c : C e) (k : R e c -> Free es a) -> Free es a
+    Op : (hidden(e : Sig)) (i : e ∈ es) (c : C e) (k : R e c -> Free es a) -> Free es a
 \end{code}
 By using a list of effects instead of allowing arbitrary disjoint unions,
 we have effectively chosen that the disjoint unions canonically associate to the right.
@@ -523,17 +522,17 @@ Thus, we will not repeat definitions such as |_>>=_| and |consequence| for the n
 \begin{code}
   _>>=_ : ∀ {a b es} -> Free es a -> (a -> Free es b) -> Free es b
   Pure x >>= f = f x
-  Step i c k >>= f = Step i c λ x -> k x >>= f
+  Op i c k >>= f = Op i c λ x -> k x >>= f
   _>>_ : ∀ {a b es} → Free es a → Free es b → Free es b
   mx >> my = mx >>= const my
   >>=-assoc : ∀ {a b c es} (S : Free es a) (f : a -> Free es b) (g : b -> Free es c) ->
     (S >>= f) >>= g == S >>= (λ x -> f x >>= g)
   >>=-assoc (Pure x) f g = refl
-  >>=-assoc (Step i c k) f g = cong (Step i c) (extensionality λ x -> >>=-assoc (k x) _ _)
+  >>=-assoc (Op i c k) f g = cong (Op i c) (extensionality λ x -> >>=-assoc (k x) _ _)
   >>=-Pure : ∀ {a es} (S : Free es a) ->
     S >>= Pure == S
   >>=-Pure (Pure x) = refl
-  >>=-Pure (Step i c k) = cong (Step i c) (extensionality λ x -> >>=-Pure (k x))
+  >>=-Pure (Op i c k) = cong (Op i c) (extensionality λ x -> >>=-Pure (k x))
   _<$>_ : ∀ {a b es} -> (a → b) → Free es a → Free es b
   f <$> mx = mx >>= λ x → Pure (f x)
 \end{code}
@@ -543,19 +542,19 @@ Most of this bookkeeping can be inferred by Agda's typeclass inference,
 so we make the indices instance arguments,
 indicated by the double curly braces |⦃ ⦄| surrounding the arguments.
 \begin{code}
-  fail : (Forall(a es)) ⦃ iND : ENondet ∈ es ⦄ -> Free es a
-  fail ⦃ iND ⦄ = Step iND Fail λ ()
-  choice : (Forall(a es)) ⦃ iND : ENondet ∈ es ⦄ -> Free es a -> Free es a -> Free es a
-  choice ⦃ iND ⦄ S₁ S₂ = Step iND Choice λ b -> if b then S₁ else S₂
+  fail : (Forall(a es)) ⦃ iND : Nondet ∈ es ⦄ -> Free es a
+  fail ⦃ iND ⦄ = Op iND Fail λ ()
+  choice : (Forall(a es)) ⦃ iND : Nondet ∈ es ⦄ -> Free es a -> Free es a -> Free es a
+  choice ⦃ iND ⦄ S₁ S₂ = Op iND Choice λ b -> if b then S₁ else S₂
 
-  call : (Forall(I O es)) ⦃ iRec : ERec I O ∈ es ⦄ -> (i : I) -> Free es (O i)
-  call ⦃ iRec ⦄ i = Step iRec i Pure
+  call : (Forall(I O es)) ⦃ iRec : Rec I O ∈ es ⦄ -> (i : I) -> Free es (O i)
+  call ⦃ iRec ⦄ i = Op iRec i Pure
 \end{code}
 For convenience of notation, we introduce the |(RecArr _ es _)| notation for general recursion,
-i.e. Kleisli arrows into |Free (ERec _ _ :: es)|.
+i.e. Kleisli arrows into |Free (Rec _ _ :: es)|.
 \begin{code}
-  RecArr' : (C : Set) (es : List Effect) (R : C → Set) → Set
-  (RecArr C es R) = (c : C) -> Free (eff C R :: es) (R c)
+  RecArr' : (C : Set) (es : List Sig) (R : C → Set) → Set
+  (RecArr C es R) = (c : C) -> Free (mkSig C R :: es) (R c)
 \end{code}
 %if style == newcode
 \begin{code}
@@ -575,18 +574,18 @@ the semantics for a combination of effects can be given as a fold over a (depend
 \begin{code}
 module Stateless where
   open Combinations
-  open Effect
+  open Sig
   open Spec
 \end{code}
 %endif
 \begin{code}
-  record PT (e : Effect) : Set where
+  record PT (e : Sig) : Set where
     constructor mkPT
     field
       pt : (c : C e) → (R e c → Set) → Set
       mono : ∀ c P P' → P ⊆ P' → pt c P → pt c P'
 
-  data PTs : List Effect -> Set where
+  data PTs : List Sig -> Set where
     Nil : PTs Nil
     _::_ : ∀ {e es} -> PT e -> PTs es -> PTs (e :: es)
 \end{code}
@@ -598,16 +597,16 @@ a weaker postcondition should also have its precondition hold.
 
 Given a such a list of predicate transformers,
 defining the semantics of an effectful program is a straightforward generalization of |wp|.
-The |Pure| case is identical, and in the |Step| case we find the predicate transformer at the corresponding index to the effect index |i : e ∈ es| using the |lookupPT| helper function.
+The |Pure| case is identical, and in the |Op| case we find the predicate transformer at the corresponding index to the effect index |i : e ∈ es| using the |lookupPT| helper function.
 \begin{code}
-  lookupPT : (Forall(C R es)) (pts : PTs es) (i : eff C R ∈ es) ->
+  lookupPT : (Forall(C R es)) (pts : PTs es) (i : mkSig C R ∈ es) ->
     (c : C) -> (R c -> Set) -> Set
   lookupPT (pt :: pts) ∈Head = PT.pt pt
   lookupPT (pt :: pts) (∈Tail i) = lookupPT pts i
 \end{code}
 %if style == newcode
 \begin{code}
-  lookupMono : ∀ {C R es} (pts : PTs es) (i : eff C R ∈ es) -> ∀ c P P' → P ⊆ P' → lookupPT pts i c P → lookupPT pts i c P'
+  lookupMono : ∀ {C R es} (pts : PTs es) (i : mkSig C R ∈ es) -> ∀ c P P' → P ⊆ P' → lookupPT pts i c P → lookupPT pts i c P'
   lookupMono (pt :: pts) ∈Head = PT.mono pt
   lookupMono (pt :: pts) (∈Tail i) = lookupMono pts i
 \end{code}
@@ -616,7 +615,7 @@ This results in the following definition of |wp| for combinations of effects.
 \begin{code}
   wp : (Forall(a es)) (pts : PTs es) -> Free es a -> (a -> Set) -> Set
   wp pts (Pure x) P = P x
-  wp pts (Step i c k) P = lookupPT pts i c λ x -> wp pts (k x) P
+  wp pts (Op i c k) P = lookupPT pts i c λ x -> wp pts (k x) P
 \end{code}
 
 The effects we are planning to use for |match| are a combination of nondeterminism and general recursion.
@@ -629,7 +628,7 @@ However, if we have a specification of a function of type |(i : I) -> O i|,
 for example in terms of a relation of type |(i : I) -> O i -> Set|,
 we are able to define a predicate transformer:
 \begin{code}
-  ptRec : (Forall(I O)) ((i : I) -> O i -> Set) -> PT (ERec I O)
+  ptRec : (Forall(I O)) ((i : I) -> O i -> Set) -> PT (Rec I O)
   PT.pt (ptRec R) i P = ∀ o -> R i o -> P o
   PT.mono (ptRec R) c P P' imp asm o h = imp _ (asm _ h)
 \end{code}
@@ -643,8 +642,8 @@ To deal with the Kleene star, we rewrite |match| as a generally recursive functi
 Since |match| makes use of |allSplits|, we also rewrite that function to use a combination of effects.
 The types become:
 \begin{code}
-  allSplits : (Forall(a es)) ⦃ iND :  ENondet ∈ es ⦄ -> List a -> Free es (List a × List a)
-  match : (Forall(es)) ⦃ iND : ENondet ∈ es ⦄ → (RecArr (Regex × String) es (tree ∘ Pair.fst))
+  allSplits : (Forall(a es)) ⦃ iND :  Nondet ∈ es ⦄ -> List a -> Free es (List a × List a)
+  match : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ → (RecArr (Regex × String) es (tree ∘ Pair.fst))
 \end{code}
 %if style == newcode
 \begin{code}
@@ -684,12 +683,12 @@ The effects we need to use for running |match| are a combination of nondetermini
 As discussed, we first need to give the specification for |match| before we can verify a program that performs a recursive |call| to |match|.
 %if style == newcode
 \begin{code}
-  ptAll : PT ENondet
+  ptAll : PT Nondet
   PT.pt ptAll Fail P = ⊤
   PT.pt ptAll Choice P = P True ∧ P False
   PT.mono ptAll Fail P P' imp asm = asm
   PT.mono ptAll Choice P P' imp (fst , snd) = imp _ fst , imp _ snd
-  ptAny : PT ENondet
+  ptAny : PT Nondet
   PT.pt ptAny Fail P = ⊥
   PT.pt ptAny Choice P = P True ∨ P False
   PT.mono ptAny Fail P P' imp asm = asm
@@ -701,7 +700,7 @@ As discussed, we first need to give the specification for |match| before we can 
   matchSpec : (r,xs : Pair Regex String) -> tree (Pair.fst r,xs) -> Set
   matchSpec (r , xs) ms = Match r xs ms
 
-  wpMatch : (Forall(a)) Free (ERec (Pair Regex String) (tree ∘ Pair.fst) :: ENondet :: Nil) a ->
+  wpMatch : (Forall(a)) Free (Rec (Pair Regex String) (tree ∘ Pair.fst) :: Nondet :: Nil) a ->
     (a -> Set) -> Set
   wpMatch = wp (ptRec matchSpec :: ptAll :: Nil)
 \end{code}
@@ -711,7 +710,7 @@ As discussed, we first need to give the specification for |match| before we can 
   consequence : ∀ {a b es P} pts (mx : Free es a) (f : a -> Free es b) ->
     wp pts mx (λ x -> wp pts (f x) P) == wp pts (mx >>= f) P
   consequence pts (Pure x) f = refl
-  consequence pts (Step i c k) f = cong (lookupPT pts i c) (extensionality λ x -> consequence pts (k x) f)
+  consequence pts (Op i c k) f = cong (lookupPT pts i c) (extensionality λ x -> consequence pts (k x) f)
 
   wpToBind : ∀ {a b es pts P} (mx : Free es a) (f : a -> Free es b) ->
     wp pts mx (λ x -> wp pts (f x) P) -> wp pts (mx >>= f) P
@@ -858,7 +857,7 @@ The code for the parser, |dmatch|, itself is very short.
 As we sketched, for an empty string we check that the expression matches the empty string,
 while for a non-empty string we use the derivative to perform a recursive call.
 \begin{code}
-  dmatch : (Forall(es)) ⦃ iND : ENondet ∈ es ⦄ -> (RecArr (Regex × String) es (tree ∘ Pair.fst))
+  dmatch : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ -> (RecArr (Regex × String) es (tree ∘ Pair.fst))
   dmatch (r , Nil) with matchEpsilon r
   ... | yes (ms , _)  = Pure ms
   ... | no ¬p         = fail
@@ -872,7 +871,7 @@ If we are going to give a formal proof of termination, we should first determine
 For that, we need to consider what it means to have no recursion in the unfolded computation.
 A definition for the |while| loop using general recursion looks as follows:
 \begin{code}
-  while : (Forall(es a)) ⦃ iRec : ERec a (K a) ∈ es ⦄ ->
+  while : (Forall(es a)) ⦃ iRec : Rec a (K a) ∈ es ⦄ ->
     (a -> Bool) -> (a -> a) -> (a -> Free es a)
   while cond body i = if cond i then Pure i else (call (body i))
 \end{code}
@@ -889,12 +888,12 @@ Thus, we should only have a trivial postcondition.
 We formalize this idea in the |terminates-in| predicate.
 \begin{code}
   terminates-in : (Forall(C R es a)) (pts : PTs es)
-    (f : (RecArr C es R)) (S : Free (eff C R :: es) a) → Nat → Set
+    (f : (RecArr C es R)) (S : Free (mkSig C R :: es) a) → Nat → Set
   terminates-in pts f (Pure x) n = ⊤
-  terminates-in pts f (Step ∈Head c k) Zero = ⊥
-  terminates-in pts f (Step ∈Head c k) (Succ n) =
+  terminates-in pts f (Op ∈Head c k) Zero = ⊥
+  terminates-in pts f (Op ∈Head c k) (Succ n) =
     terminates-in pts f (f c >>= k) n
-  terminates-in pts f (Step (∈Tail i) c k) n =
+  terminates-in pts f (Op (∈Tail i) c k) n =
     lookupPT pts i c (λ x → terminates-in pts f (k x) n)
 \end{code}
 
@@ -918,11 +917,11 @@ which we rewrite using the associativity monad law in a lemma called |terminates
     where
     assoc : ∀ {es a b c} (S : Free es a) (f : a → Free es b) (g : b → Free es c) → (S >>= f) >>= g == S >>= (λ x → f x >>= g)
     assoc (Pure x) f g = refl
-    assoc (Step i c k) f g = cong (Step i c) (extensionality λ x → assoc (k x) f g)
-    terminates-fmap : ∀ {C R es a b pts f} {g : a → b} n (S : Free (eff C R :: es) a) → terminates-in pts f S n → terminates-in pts f (S >>= (Pure ∘ g)) n
+    assoc (Op i c k) f g = cong (Op i c) (extensionality λ x → assoc (k x) f g)
+    terminates-fmap : ∀ {C R es a b pts f} {g : a → b} n (S : Free (mkSig C R :: es) a) → terminates-in pts f S n → terminates-in pts f (S >>= (Pure ∘ g)) n
     terminates-fmap n (Pure x) H = H
-    terminates-fmap {pts = pts} {f} {g} (Succ n) (Step ∈Head c k) H = subst (λ S → terminates-in pts f S n) (assoc (f c) k (Pure ∘ g)) (terminates-fmap n (f c >>= k) H)
-    terminates-fmap {pts = pts} n (Step (∈Tail i) c k) H = lookupMono pts i c _ _ (λ x → terminates-fmap n (k x)) H
+    terminates-fmap {pts = pts} {f} {g} (Succ n) (Op ∈Head c k) H = subst (λ S → terminates-in pts f S n) (assoc (f c) k (Pure ∘ g)) (terminates-fmap n (f c >>= k) H)
+    terminates-fmap {pts = pts} n (Op (∈Tail i) c k) H = lookupMono pts i c _ _ (λ x → terminates-fmap n (k x)) H
 \end{code}
 %endif
 
@@ -1065,7 +1064,7 @@ based on the inductive relation representing the language of a given regular exp
 Where we use nondeterminism to handle the concatenation operator,
 \citeauthor{harper-regex} uses a continuation-passing parser for control flow.
 Since the continuations take the unparsed remainder of the string,
-they correspond almost directly to the |EParser| effect of the following section.
+they correspond almost directly to the |Parser| effect of the following section.
 Another main difference between our implementation and \citeauthor{harper-regex}'s
 is in the way the non-termination of |match| is resolved.
 \citeauthor{harper-regex} uses the derivative operator to rewrite the expression in a standard form
@@ -1079,53 +1078,53 @@ In general, choosing between informal reasoning and formal verification will alw
 \section{Parsing as effect} \label{sec:parser}
 %if style == newcode
 \begin{code}
-module EParser where
+module Parser where
   open Combinations
-  open Effect
+  open Sig
 \end{code}
 %endif
 In the previous sections, we wrote parsers as nondeterministic functions.
 For more complicated classes of languages than regular expressions, explicitly passing around the string to be parsed becomes cumbersome quickly.
 The traditional solution is to switch from nondeterminism to stateful nondeterminism, where the state contains the unparsed portion of the string~\cite{hutton}.
-The combination of nondeterminism and state can be represented by the |Parser| monad:
+The combination of nondeterminism and state can be represented by the |ListOfSuccesses| monad:
 \begin{code}
-  Parser : Set → Set
-  Parser a = String → List (a × String)
+  ListOfSuccesses : Set → Set
+  ListOfSuccesses a = String → List (a × String)
 \end{code}
 
 Since our development makes use of algebraic effects,
 we can introduce the effect of mutable state without having to change existing definitions.
-We introduce this using the |EParser| effect, which has one command |Symbol|.
+We introduce this using the |Parser| effect, which has one command |Symbol|.
 Calling |Symbol| will return the current symbol in the state (advancing the state by one) or fail if all symbols have been consumed.
 \begin{code}
   data CParser : Set where
     Symbol : CParser
   RParser : CParser -> Set
   RParser Symbol = Char
-  EParser = eff CParser RParser
+  Parser = mkSig CParser RParser
 
-  symbol : (Forall(es)) ⦃ iP : EParser ∈ es ⦄ -> Free es Char
-  symbol ⦃ iP ⦄ = Step iP Symbol Pure
+  symbol : (Forall(es)) ⦃ iP : Parser ∈ es ⦄ -> Free es Char
+  symbol ⦃ iP ⦄ = Op iP Symbol Pure
 \end{code}
 We could add more commands such as |EOF| for detecting the end of the input, but we do not need them in the current development.
 In the semantics we will define that parsing was successful if the input string has been completely consumed.
 
-Note that |EParser| is not sufficient by itself to implement even simple parsers such as |dmatch|:
+Note that |Parser| is not sufficient by itself to implement even simple parsers such as |dmatch|:
 we need to be able to choose between parsing the next character or returning a value for the empty string.
-This is why we usually combine |EParser| with the nondeterminism effect |ENondet|,
-and the general recursion effect |ERec|.
+This is why we usually combine |Parser| with the nondeterminism effect |Nondet|,
+and the general recursion effect |Rec|.
 
 The denotational semantics of a parser in the |Free| monad take the form of a fold,
 handling each command in the |Parser| monad.
 \begin{code}
-  toParser : (Forall(a)) Free (ENondet :: EParser :: Nil) a -> Parser a
-  toParser (Pure x) Nil = (x , Nil) :: Nil
-  toParser (Pure x) (_ :: _) = Nil
-  toParser (Step ∈Head Fail k) xs = Nil
-  toParser (Step ∈Head Choice k) xs =
-    toParser (k True) xs ++ toParser (k False) xs
-  toParser (Step (∈Tail ∈Head) Symbol k) Nil = Nil
-  toParser (Step (∈Tail ∈Head) Symbol k) (x :: xs) = toParser (k x) xs
+  runParser : (Forall(a)) Free (Nondet :: Parser :: Nil) a -> ListOfSuccesses a
+  runParser (Pure x) Nil = (x , Nil) :: Nil
+  runParser (Pure x) (_ :: _) = Nil
+  runParser (Op ∈Head Fail k) xs = Nil
+  runParser (Op ∈Head Choice k) xs =
+    runParser (k True) xs ++ runParser (k False) xs
+  runParser (Op (∈Tail ∈Head) Symbol k) Nil = Nil
+  runParser (Op (∈Tail ∈Head) Symbol k) (x :: xs) = runParser (k x) xs
 \end{code}
 
 In this article, we are more interested in the predicate transformer semantics of |EParse|.
@@ -1134,7 +1133,7 @@ We can incorporate a mutable state of type |s| in predicate transformer semantic
 by replacing the propositions in |Set| with predicates over the state in |s → Set|.
 We define the resulting type of stateful predicate transformers for an effect |e| to be |PTS s e|, as follows:
 \begin{code}
-  record PTS (s : Set) (e : Effect) : Set where
+  record PTS (s : Set) (e : Sig) : Set where
     constructor mkPTS
     field
       pt : (c : C e) → (R e c → s → Set) → s → Set
@@ -1142,14 +1141,14 @@ We define the resulting type of stateful predicate transformers for an effect |e
 \end{code}
 %if style == newcode
 \begin{code}
-  data PTSs (s : Set) : List Effect -> Set where
+  data PTSs (s : Set) : List Sig -> Set where
     Nil : PTSs s Nil
     _::_ : ∀ {e es} -> PTS s e -> PTSs s es -> PTSs s (e :: es)
 
-  lookupPTS : ∀ {s C R es} (pts : PTSs s es) (i : eff C R ∈ es) -> (c : C) -> (R c -> s -> Set) -> s -> Set
+  lookupPTS : ∀ {s C R es} (pts : PTSs s es) (i : mkSig C R ∈ es) -> (c : C) -> (R c -> s -> Set) -> s -> Set
   lookupPTS (pt :: pts) ∈Head c P t = PTS.pt pt c P t
   lookupPTS (pt :: pts) (∈Tail i) c P t = lookupPTS pts i c P t
-  lookupMono : ∀ {s C R es} (pts : PTSs s es) (i : eff C R ∈ es) -> ∀ c P P' → (∀ x t → P x t → P' x t) → ∀ t → lookupPTS pts i c P t → lookupPTS pts i c P' t
+  lookupMono : ∀ {s C R es} (pts : PTSs s es) (i : mkSig C R ∈ es) -> ∀ c P P' → (∀ x t → P x t → P' x t) → ∀ t → lookupPTS pts i c P t → lookupPTS pts i c P' t
   lookupMono (pt :: pts) ∈Head = PTS.mono pt
   lookupMono (pt :: pts) (∈Tail i) = lookupMono pts i
 \end{code}
@@ -1159,7 +1158,7 @@ we can find a weakest precondition that incorporates the current state:
 \begin{code}
   wpS : (Forall(s es a)) (pts : PTSs s es) -> Free es a -> (a -> s -> Set) -> s -> Set
   wpS pts (Pure x) P = P x
-  wpS pts (Step i c k) P = lookupPTS pts i c λ x -> wpS pts (k x) P
+  wpS pts (Op i c k) P = lookupPTS pts i c λ x -> wpS pts (k x) P
 \end{code}
 
 In this definition for |wpS|, we assume that all effects share access to one mutable variable of type |s|.
@@ -1168,15 +1167,15 @@ With a suitable modification of the predicate transformers,
 we could set it up so that each effect can only modify its own associated variable.
 Thus, the previous definition is not limited in generality by writing it only for one variable.
 
-To give the predicate transformer semantics of the |EParser| effect,
+To give the predicate transformer semantics of the |Parser| effect,
 we need to choose the meaning of failure, for the case where the next character is needed
 and all characters have already been consumed.
 Since we want all results returned by the parser to be correct,
 we use demonic choice and the |ptAll| predicate transformer
-as the semantics for |ENondet|.
-Using |ptAll|'s semantics for the |Fail| command gives the following semantics for the |EParser| effect.
+as the semantics for |Nondet|.
+Using |ptAll|'s semantics for the |Fail| command gives the following semantics for the |Parser| effect.
 \begin{code}
-  ptParse : PTS String EParser
+  ptParse : PTS String Parser
   PTS.pt ptParse Symbol P Nil = ⊤
   PTS.pt ptParse Symbol P (x :: xs) = P x xs
 \end{code}
@@ -1184,7 +1183,7 @@ Using |ptAll|'s semantics for the |Fail| command gives the following semantics f
 \begin{code}
   PTS.mono ptParse Symbol P Q imp Nil asm = tt
   PTS.mono ptParse Symbol P Q imp (x :: xs) asm = imp x xs asm
-  ptAll : ∀ {s} -> PTS s ENondet
+  ptAll : ∀ {s} -> PTS s Nondet
   PTS.pt ptAll Fail P _ = ⊤
   PTS.pt ptAll Choice P s = P True s ∧ P False s
   PTS.mono ptAll Fail P Q imp t tt = tt
@@ -1200,7 +1199,7 @@ a string |xs| is in the language of a parser |S| if the postcondition ``all char
   empty? Nil = ⊤
   empty? (_ :: _) = ⊥
 
-  _∈[_] : (Forall(a)) String -> Free (ENondet :: EParser :: Nil) a -> Set
+  _∈[_] : (Forall(a)) String -> Free (Nondet :: Parser :: Nil) a -> Set
   xs ∈[ S ] = wpS (ptAll :: ptParse :: Nil) S (λ _ -> empty?) xs
 \end{code}
 
@@ -1232,7 +1231,7 @@ The (disjoint) union of |Char| and |Nonterm| gives all the symbols that we can u
 %if style == newcode
 \begin{code}
 module Grammar (gs : GrammarSymbols) where
-  open EParser hiding (Symbol)
+  open Parser hiding (Symbol)
   open GrammarSymbols gs
 \end{code}
 %endif
@@ -1272,7 +1271,7 @@ Now we can define the type of production rules. A rule of the form $A \to B c D$
 We use the abbreviation |Prods| to represent a list of productions,
 and a grammar will consist of the list of all relevant productions.
 
-We want to show that a generally recursive function making use of the effects |EParser| and |ENondet| can parse any context-free grammar.
+We want to show that a generally recursive function making use of the effects |Parser| and |Nondet| can parse any context-free grammar.
 To show this claim, we implement a function |fromProds| that constructs a parser for any context-free grammar given as a list of |Prod|s,
 then formally verify the correctness of |fromProds|.
 Our implementation mirrors the definition of the |generateParser| function by \citeauthor{dependent-grammar},
@@ -1281,7 +1280,7 @@ our implementation uses the |Free| monad and algebraic effects, while \citeautho
 %if style == newcode
 \begin{code}
 module FromProds (gs : GrammarSymbols) (prods : Grammar.Prods gs) where
-  open EParser hiding (Symbol)
+  open Parser hiding (Symbol)
   open GrammarSymbols gs
   open Grammar gs
   open Combinations
@@ -1290,7 +1289,7 @@ module FromProds (gs : GrammarSymbols) (prods : Grammar.Prods gs) where
 
 We start by defining two auxiliary types, used as abbreviations in our code.
 \begin{code}
-  FreeParser = Free (eff Nonterm ⟦_⟧ :: ENondet :: EParser :: Nil)
+  FreeParser = Free (mkSig Nonterm ⟦_⟧ :: Nondet :: Parser :: Nil)
 
   record ProdRHS (A : Nonterm) : Set where
     constructor prodrhs
@@ -1354,7 +1353,7 @@ and for matching a string with a single production rule.
 %if style == newcode
 \begin{code}
 module Correctness (gs : GrammarSymbols) where
-  open EParser hiding (Symbol)
+  open Parser hiding (Symbol)
   open GrammarSymbols gs
   open Grammar gs
   open Combinations
@@ -1380,7 +1379,7 @@ module Correctness (gs : GrammarSymbols) where
 \end{code}
 %if style == newcode
 \begin{code}
-  ptRec : ∀ {a : Set} {I : Set} {O : I -> Set} -> ((i : I) -> a -> O i -> a -> Set) -> PTS a (ERec I O)
+  ptRec : ∀ {a : Set} {I : Set} {O : I -> Set} -> ((i : I) -> a -> O i -> a -> Set) -> PTS a (Rec I O)
   PTS.pt (ptRec R) i P s = ∀ o s' -> R i s o s' -> P o s'
   PTS.mono (ptRec R) c P Q imp t asm o t' h = imp _ _ (asm _ _ h)
 
@@ -1425,7 +1424,7 @@ We choose |ptAll| as the semantics of nondeterminism, since we want to ensure al
   consequence : ∀ {a b s es} (pts : PTSs s es) {P} (mx : Free es a) (f : a -> Free es b) ->
     ∀ t -> wpS pts mx (λ x t -> wpS pts (f x) P t) t == wpS pts (mx >>= f) P t
   consequence pts (Pure x) f t = refl
-  consequence pts (Step i c k) f t = cong (λ P -> lookupPTS pts i c P t) (extensionality λ x -> extensionality λ t -> consequence pts (k x) f t)
+  consequence pts (Op i c k) f t = cong (λ P -> lookupPTS pts i c P t) (extensionality λ x -> extensionality λ t -> consequence pts (k x) f t)
 
   wpToBind : ∀ {a b s es} {pts : PTSs s es} {P} (mx : Free es a) (f : a -> Free es b) ->
     ∀ t -> wpS pts mx (λ x t -> wpS pts (f x) P t) t -> wpS pts (mx >>= f) P t
@@ -1597,17 +1596,17 @@ and each recursive call made to |c'| in the evaluation of |f c|,
 we have |c' ≺ c|.
 Formally:
 \begin{code}
-  variant' : (Forall(s es C R a)) (pts : PTSs s (eff C R :: es)) (f : (RecArr C es R))
+  variant' : (Forall(s es C R a)) (pts : PTSs s (mkSig C R :: es)) (f : (RecArr C es R))
     (_≺_ : (C × s) → (C × s) → Set)
-    (c : C) (t : s) (S : Free (eff C R :: es) a) → s → Set
+    (c : C) (t : s) (S : Free (mkSig C R :: es) a) → s → Set
   variant' pts f _≺_ c t (Pure x) t' = ⊤
-  variant' pts f _≺_ c t (Step ∈Head c' k) t'
+  variant' pts f _≺_ c t (Op ∈Head c' k) t'
     = ((c' , t') ≺ (c , t)) × lookupPTS pts ∈Head c'
       (λ x → variant' pts f _≺_ c t (k x)) t'
-  variant' pts f _≺_ c t (Step (∈Tail i) c' k) t'
+  variant' pts f _≺_ c t (Op (∈Tail i) c' k) t'
     = lookupPTS pts (∈Tail i) c' (λ x → variant' pts f _≺_ c t (k x)) t'
 
-  variant : (Forall(s es C R)) (pts : PTSs s (eff C R :: es)) (f : (RecArr C es R)) →
+  variant : (Forall(s es C R)) (pts : PTSs s (mkSig C R :: es)) (f : (RecArr C es R)) →
     (_≺_ : (C × s) → (C × s) → Set) → Set
   variant (hidden(s)) (hidden(es)) (hidden(C)) (hidden(R)) pts f _≺_ = ∀ c t → variant' pts f _≺_ c t (f c) t
 \end{code}
@@ -1618,7 +1617,7 @@ since we do not yet know whether |f| terminates.
 Using |variant|, we can define another termination condition on |f|:
 there is a well-founded variant for |f|.
 \begin{code}
-  record Termination (hidden(s es C R)) (pts : PTSs s (eff C R :: es)) (f : (RecArr C es R)) : Set where
+  record Termination (hidden(s es C R)) (pts : PTSs s (mkSig C R :: es)) (f : (RecArr C es R)) : Set where
     field
       _≺_ : (C × s) → (C × s) → Set
       w-f : ∀ c t → Acc _≺_ (c , t)
@@ -1633,9 +1632,9 @@ This bound gives the amount of fuel consumed by evaluating a call to |f| on |c|.
 In our case, the relation |RecOrder| will work as a recursive variant for |fromProds|:
 \begin{code}
   data RecOrder (prods : Prods) : (x y : Nonterm × String) -> Set where
-    Adv : (Forall(str str' A B)) length str < length str' →
+    Left : (Forall(str str' A B)) length str < length str' →
       RecOrder prods (A , str) (B , str')
-    Rec : (Forall(str str' A B)) length str ≤ length str' →
+    Right : (Forall(str str' A B)) length str ≤ length str' →
       LRec prods A B → RecOrder prods (A , str) (B , str')
 \end{code}
 With the definition of |RecOrder|, we can complete the correctness proof of |fromProds|,
@@ -1667,24 +1666,24 @@ If |k| is zero, we have consumed more than |length str| characters of |str|, als
 
 %if style == newcode
 \begin{code}
-    go A Nil Zero ltK n cs H' (A' , str') (Adv ())
-    go A (_ :: _) Zero () n cs H' (A' , str') (Adv lt)
+    go A Nil Zero ltK n cs H' (A' , str') (Left ())
+    go A (_ :: _) Zero () n cs H' (A' , str') (Left lt)
 
-    go A (_ :: _) (Succ k) (s≤s ltK) n cs H' (A' , str') (Adv (s≤s lt))
+    go A (_ :: _) (Succ k) (s≤s ltK) n cs H' (A' , str') (Left (s≤s lt))
       = acc (go A' str' k (≤-trans lt ltK) bound Nil ≤-refl)
-    go A str k ltK Zero cs H' (A' , str') (Rec lt cs')
+    go A str k ltK Zero cs H' (A' , str') (Right lt cs')
       = (λ ()) (<⇒≱ (H cs) (≤-trans H' (≤-reflexive (+-identityʳ _))))
-    go A str k ltK (Succ n) cs H' (A' , str') (Rec lt c)
+    go A str k ltK (Succ n) cs H' (A' , str') (Right lt c)
       = acc (go A' str' k (≤-trans lt ltK) n (c :: cs) (≤-trans H' (≤-reflexive (+-suc _ _))))
 
   Termination.var (fromProdsTerminates prods bound H) A str = filterStep prods id A str str ≤-refl
     where
     open FromProds gs prods hiding (FreeParser; fromProds)
 
-    variant-fmap : ∀ {a b C R s es _≺_ c t t'} (pts : PTSs s (eff C R :: es)) f S {k : a → b} → variant' pts f _≺_ c t S t' → variant' pts f _≺_ c t (S >>= λ x → Pure (k x)) t'
+    variant-fmap : ∀ {a b C R s es _≺_ c t t'} (pts : PTSs s (mkSig C R :: es)) f S {k : a → b} → variant' pts f _≺_ c t S t' → variant' pts f _≺_ c t (S >>= λ x → Pure (k x)) t'
     variant-fmap pts f (Pure x) H = tt
-    variant-fmap pts f (Step ∈Head c k) (fst , snd) = fst , lookupMono pts ∈Head c _ _ (λ x t' H' → variant-fmap pts f (k x) H') _ snd
-    variant-fmap pts f (Step (∈Tail i) c k) H = lookupMono pts (∈Tail i) c _ _ (λ x t' H' → variant-fmap pts f (k x) H') _ H
+    variant-fmap pts f (Op ∈Head c k) (fst , snd) = fst , lookupMono pts ∈Head c _ _ (λ x t' H' → variant-fmap pts f (k x) H') _ snd
+    variant-fmap pts f (Op (∈Tail i) c k) H = lookupMono pts (∈Tail i) c _ _ (λ x t' H' → variant-fmap pts f (k x) H') _ H
 
     consumeString : ∀ str str' A o → parserSpec prods A str o str' → length str' ≤ length str
     consumeString' : ∀ A str rhs (f : ⟦ rhs ∥ A ⟧ → ⟦ A ⟧) str' → prods ⊢ str ~ rhs => f , str' → length str' ≤ length str
@@ -1728,7 +1727,7 @@ We also use a |filterStep| lemma that calls the correct |parseStep| for each pro
       str'
 \end{code}
 In the |parseStepAdv|, we deal with the situation that the parser has already consumed at least one character since it was called.
-This means we can repeatedly use the |Adv| constructor of |RecOrder| to show the variant holds.
+This means we can repeatedly use the |Left| constructor of |RecOrder| to show the variant holds.
 %if style == newcode
 \begin{code}
     parseStepAdv A Nil str str' lt = tt
@@ -1738,7 +1737,7 @@ This means we can repeatedly use the |Adv| constructor of |RecOrder| to show the
       = parseStepAdv A xs _ _ (s≤s (≤-step lt))
     ... | no ¬p = tt
     parseStepAdv A (Inr B :: xs) str str' lt
-      = Adv lt
+      = Left lt
       , λ o str'' H → variant-fmap (pts prods) (fromProds prods) (buildParser xs)
         (parseStepAdv A xs str str'' (≤-trans (s≤s (consumeString str' str'' B o H)) lt))
 \end{code}
@@ -1747,7 +1746,7 @@ the lemma |consumeString str' str'' B| states that the string |str''| is shorter
 %endif
 
 In the |parseStepRec|, we deal with the situation that the parser has only encountered nonterminals in the current production.
-This means that we can use the |Rec| constructor of |RecOrder| to show the variant holds until we consume a character,
+This means that we can use the |Right| constructor of |RecOrder| to show the variant holds until we consume a character,
 after which we call |parseStepAdv| to finish the proof.
 %if style == newcode
 \begin{code}
@@ -1758,7 +1757,7 @@ after which we call |parseStepAdv| to finish the proof.
       = parseStepAdv A xs _ _ (s≤s lt)
     ... | no ¬p = tt
     parseStepRec A (Inr B :: xs) str str' lt ys i
-      = Rec lt (record { rec = i })
+      = Right lt (record { rec = i })
       , λ o str'' H → variant-fmap (pts prods) (fromProds prods) (buildParser xs)
         (parseStepRec A xs str str'' (≤-trans (consumeString str' str'' B o H) lt)
         (ys ++ (B :: Nil)) (nextNonterm i))
