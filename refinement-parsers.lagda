@@ -25,27 +25,84 @@ P ⊆ Q = ∀ x -> P x -> Q x
 \begin{document}
 
 \title{Verified parsers using the refinement calculus and algebraic effects}
+% Of misschien iets als:
+% A predicate transformer semantics for parsing
+% Verifying parser combinators using predicate transformers
 \author{Tim Baanen \and Wouter Swierstra}
 \institute{Vrije Universiteit Amsterdam, Utrecht University
 \email{\{t.baanen@@vu.nl,w.s.swierstra@@uu.nl\}}}
 %
 \maketitle              % typeset the header of the contribution
 
-There are various ways to write a parser in functional languages, for example using parser combinations.
-How do we ensure these parsers are correct?
-Previous work has shown that predicate transformers are useful for verification of programs using algebraic effects.
-This paper will show how predicate transformers and algebraic effects allow for formal verification of parsers.
+\section{Introduction}
+\label{sec:intro}
+
+There is a significant body of work on parser combinators
+\cite{hutton, swierstra-duponcheel, list-of-successes,others?},
+% TODO Check het paper van Nils anders danielsson voor een veeeel langere lijst
+% met referenties over parser combinators
+typically defined in a lazy functional programming language. 
+Yet how can we ensure that these parsers are correct? There is notably
+less work that attempts to  answer this
+question~\cite{total-parser-combinators, firsov-certification-context-free-grammars}.
+
+In this paper, we explore a novel approach, drawing inspiration from
+recent work on algebraic effects~\cite{eff, effect-handlers-in-scope,
+  McBride-totally-free}.  Parser combinators typically use a
+combination of effects: state to store the string being parsed;
+non-determinism to handle backtracking; and general recursion to
+handle recursive grammars.
+
+We demonstrate how to reason about all these effects uniformly using
+\emph{predicate transformers}~\cite{pt-semantics-for-effects}.
+We extend previous work that uses predicate transformer semantics to reason about one effect,
+assigning predicate transformer semantics to a combination of effects.
+Our semantics is modular, allowing us to introduce concepts only when they are needed,
+and do this without having to rework the previous definitions.
+In particular, our careful treatment
+of general recursion lets us separate the (partial) correctness of the
+combinators from their termination in a clean fashion. Most existing
+proofs require combinators to show that the string being parsed
+decreases, conflating termination and correctness.
+
+In particular, this paper makes the following novel contributions:
+\begin{itemize}
+\item The non-recursive fragment of regular expressions can be correctly parsed
+  using non-determinism (Section \ref{sec:regex-nondet});
+  by combining non-determinism with general recursion (Section \ref{sec:combinations}),
+  support for the Kleene star can be added without compromising our previous definitions
+  (Section \ref{sec:regex-rec}). Although the resulting parser is not guaranteed to terminate,
+  it is \emph{refined} by another implementation using Brzozowski derivatives that does terminate
+  (Section \ref{sec:dmatch}).
+  
+\item Next, we show how this approach may be extended to handle
+  context-free languages. To do so, we show how to write parsers using
+  algebraic effects (Section \ref{sec:parser}), and map grammars to parsers (Section
+  \ref{sec:fromProductions}). Once again, we can cleanly separate the proofs of partial
+  correctness (Section \ref{sec:partialCorrectness}) and termination (Section \ref{sec:fromProds-terminates}).
+\end{itemize}
+
+All the programs and proofs in this paper are written in the dependently typed language Agda~\cite{agda-thesis}.
+%TODO link?
 
 \section{Recap: algebraic effects and predicate transformers}
-Algebraic effects were introduced to allow for incorporating side effects in functional languages.
-For example, the effect |ENondet| allows for nondeterministic programs:
+Algebraic effects separate the \emph{syntax} and \emph{semantics} of
+effectful operations. The syntax is given by a signature of the operations:
+%Wouter: should we replace Effect by Sig?
 \begin{code}
 record Effect : Set where
   constructor eff
   field
     C : Set
     R : C -> Set
-
+\end{code}
+Here the type |C| contains the `commands', or effectful operations
+that a given effect supports. For each command |c : C|, the type |R c|
+describes the possible responses. %TODO cite containers paper
+For example, the following signature describes two operations: the
+non-deterministic choice between two values, |Choice|; and a failure
+operator, |Fail|.
+\begin{code}    
 data CNondet : Set where
   Fail : CNondet
   Choice : CNondet
@@ -55,14 +112,14 @@ RNondet Choice = Bool
 
 ENondet = eff CNondet RNondet
 \end{code}
-
 %if style == newcode
 \begin{code}
 module NoCombination where
   open Effect
 \end{code}
 %endif
-We represent effectful programs using the |Free| datatype.
+We represent effectful programs that use a particular effect using the
+corresponding \emph{free monad}:
 \begin{code}
   data Free (e : Effect) (a : Set) : Set where
     Pure : a -> Free e a
@@ -71,8 +128,8 @@ We represent effectful programs using the |Free| datatype.
 This gives a monad, with the bind operator defined as follows:
 \begin{code}
   _>>=_ : (Forall(a b e)) Free e a -> (a -> Free e b) -> Free e b
-  Pure x >>= f = f x
-  Step c k >>= f = Step c (λ x -> k x >>= f)
+  Pure x    >>= f = f x
+  Step c k  >>= f = Step c (λ x -> k x >>= f)
 \end{code}
 %if style == newcode
 \begin{code}
@@ -80,24 +137,32 @@ This gives a monad, with the bind operator defined as follows:
   f <$> mx = mx >>= λ x → Pure (f x)
 \end{code}
 %endif
-The easiest way to use effects is with smart constructors:
+To facilitate programming with effects, we define the following smart
+constructors, sometimes referred to as \emph{generic effects} in the
+literature on algebraic effects:
 \begin{code}
   fail : (Forall(a)) Free ENondet a
   fail = Step Fail λ ()
   choice : (Forall(a)) Free ENondet a -> Free ENondet a -> Free ENondet a
   choice S₁ S₂ = Step Choice λ b -> if b then S₁ else S₂
 \end{code}
-
-To give specifications of programs that incorporate effects,
-we can use predicate transformers.
+In this paper, we will assign \emph{semantics} to effectful programs
+by mapping them to \emph{predicate transformers}.
+% TODO: ik zou dit niet wp noemen. Eerder iets als ⟦_⟧ -- er is immers
+% geen input waarvoor de preconditie moet gelden
+% bovendien zou ik de volgorde van de argumenten omdraaien:
+% (a -> Set) -> (Free (eff C R) a -> Set)
+% dit is makkelijker te herkennen als predicate transformer
 \begin{code}
   wp : {C : Set} {R : C -> Set} -> ((c : C) -> (R c -> Set) -> Set) ->
     {a : Set} -> Free (eff C R) a -> (a -> Set) -> Set
   wp alg (Pure x) P = P x
   wp alg (Step c k) P = alg c λ x -> wp alg (k x) P
 \end{code}
-Interestingly, these predicate transformers are exactly the catamorphisms from |Free| to |Set|.
-
+This semantics is given by a catamorphism over the free monad,
+computing the proposition that captures the programs semantics. For
+non-determinism, for example, we may want to require that a given
+predicate |P| holds for all possible results that may be returned: 
 %if style == newcode
 \begin{code}
 module Nondet where
@@ -105,8 +170,8 @@ module Nondet where
 %endif
 \begin{code}
   ptAll : (c : CNondet) -> (RNondet c -> Set) -> Set
-  ptAll Fail P = ⊤
-  ptAll Choice P = P True ∧ P False
+  ptAll Fail P    = ⊤
+  ptAll Choice P  = P True ∧ P False
 \end{code}
 
 %if style == newcode
@@ -121,9 +186,9 @@ module NoCombination2 where
   wpNondetAll S P = wp ptAll S P
 \end{code}
 
-We use pre- and postconditions to give a specification for a program.
-If the precondition holds on the input,
-the program needs to ensure the postcondition holds on the output.
+Using these semantics, we will relate programs to their
+specifications. The specifications we will consider throughout this
+paper consist of a pre- and postcondition. 
 \begin{code}
 module Spec where
   record Spec (a : Set) : Set where
@@ -131,18 +196,29 @@ module Spec where
     field
       pre : Set
       post : a -> Set
-
+\end{code}
+Just as we did for our effects, we can also assign a predicate
+transformer semantics to our specifications:
+\begin{code}    
   wpSpec : (Forall(a)) Spec a -> (a -> Set) -> Set
   wpSpec [[ pre , post ]] P = pre ∧ (∀ o -> post o -> P o)
 \end{code}
+This computes the `weakest precondition' necessary for a specification
+to imply that the desired postcondition |P| holds. In particular, the
+precondition |pre| should hold and any possible result satisfying the
+postcondition |post| should imply the postcondition |P|.
 
-The refinement relation expresses when one program is ``better'' than another.
-We need to take into account the semantics we want to impose on the program,
-so we define it in terms of the predicate transformer associated with the program.
+Finally, we can relate programs and specifications using the following
+\emph{refinement relation}:
 \begin{code}
   _⊑_ : (Forall(a : Set)) (pt1 pt2 : (a -> Set) -> Set) -> Set
   pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
 \end{code}
+By mapping programs and specifications to their corresponding
+predicate transformers.
+
+It is easy to show that this relation is both transitive and
+reflexive.
 %if style == newcode
 \begin{code}
   ⊑-refl : (Forall(a)) {pt : (a -> Set) -> Set} -> pt ⊑ pt
@@ -150,7 +226,7 @@ so we define it in terms of the predicate transformer associated with the progra
 \end{code}
 %endif
 
-\section{Almost parsing regular languages}
+\section{Almost parsing regular languages} \label{sec:regex-nondet}
 %if style == newcode
 \begin{code}
 open import Data.Char using (Char; _≟_)
@@ -390,7 +466,7 @@ Apart from having to introduce |wpToBind|, the proof essentially follows automat
   matchSound (r *) xs P (() , postH)
 \end{code}
 
-\section{Combining nondeterminism and general recursion}
+\section{Combining nondeterminism and general recursion} \label{sec:combinations}
 The matcher we have defined in the previous section is unfinished,
 since it is not able to handle regular expressions that incorporate the Kleene star.
 The fundamental issue is that the Kleene star allows for arbitrarily many distinct matchings in certain cases.
@@ -561,7 +637,7 @@ In the case of verifying the |match| function, the |Match| relation will play th
 If we use |ptRec R| as a predicate transformer to check that a recursive function satisfies the relation |R|,
 then we are proving \emph{partial correctness}, since we assume each recursive call terminates according to the relation |R|.
 
-\section{Recursively parsing every regular expression}
+\section{Recursively parsing every regular expression} \label{sec:regex-rec}
 
 To deal with the Kleene star, we rewrite |match| as a generally recursive function using a combination of effects.
 Since |match| makes use of |allSplits|, we also rewrite that function to use a combination of effects.
@@ -1000,7 +1076,7 @@ The final major difference is that \citeauthor{harper-regex} uses manual verific
 Although our development takes more work, the correctness proofs give more certainty than the informal arguments made by \citeauthor{harper-regex}.
 In general, choosing between informal reasoning and formal verification will always be a trade-off between speed and accuracy.
 
-\section{Parsing as effect}
+\section{Parsing as effect} \label{sec:parser}
 %if style == newcode
 \begin{code}
 module EParser where
@@ -1128,7 +1204,7 @@ a string |xs| is in the language of a parser |S| if the postcondition ``all char
   xs ∈[ S ] = wpS (ptAll :: ptParse :: Nil) S (λ _ -> empty?) xs
 \end{code}
 
-\section{Parsing context-free languages} \label{sec:contextFree}
+\section{Parsing context-free languages} \label{sec:fromProductions}
 In Section \ref{sec:dmatch}, we developed and formally verified a parser for regular languages.
 The class of regular languages is small, and does not include most programming languages.
 A class of languages that is more expressive than the regular languages,
@@ -1196,7 +1272,6 @@ Now we can define the type of production rules. A rule of the form $A \to B c D$
 We use the abbreviation |Prods| to represent a list of productions,
 and a grammar will consist of the list of all relevant productions.
 
-\section{From abstract grammars to abstract parsers}
 We want to show that a generally recursive function making use of the effects |EParser| and |ENondet| can parse any context-free grammar.
 To show this claim, we implement a function |fromProds| that constructs a parser for any context-free grammar given as a list of |Prod|s,
 then formally verify the correctness of |fromProds|.
@@ -1266,7 +1341,7 @@ and |fail|s if this is not the case.
   exact x t = symbol (hiddenInstance(∈Tail (∈Tail ∈Head))) >>= λ t' → if' t ≟ t' then (hiddenConst(Pure x)) else (hiddenConst(fail (hiddenInstance(∈Tail ∈Head))))
 \end{code}
 
-\section{Partial correctness of the parser}
+\section{Partial correctness of the parser} \label{sec:partialCorrectness}
 Partial correctness of the parser is relatively simple to show,
 as soon as we have a specification.
 Since we want to prove that |fromProds| correctly parses any given context free grammar given as an element of |Prods|,
@@ -1711,3 +1786,11 @@ As for partial correctness, we obtain the proof of termination by applying |filt
 \todo{Fill this!}
 
 \end{document}
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% TeX-command-default: "lagda2pdf"
+%%% End: 
+
+
