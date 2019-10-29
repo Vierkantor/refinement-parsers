@@ -1118,8 +1118,7 @@ In the semantics we will define that parsing was successful if the input string 
 
 Note that |Parser| is not sufficient by itself to implement even simple parsers such as |dmatch|:
 we need to be able to choose between parsing the next character or returning a value for the empty string.
-This is why we usually combine |Parser| with the nondeterminism effect |Nondet|,
-and the general recursion effect |Rec|.
+This is why we usually combine |Parser| with nondeterminism and general recursion.
 
 The denotational semantics of a parser in the |Free| monad take the form of a fold,
 handling each command in the |Parser| monad.
@@ -1134,11 +1133,11 @@ handling each command in the |Parser| monad.
   runParser (Op (∈Tail ∈Head) Symbol k) (x :: xs) = runParser (k x) xs
 \end{code}
 
-In this article, we are more interested in the predicate transformer semantics of |EParse|.
-Since the semantics of the |EParse| effect refer to a state, the predicates depend on this state.
+In this article, we are more interested in the predicate transformer semantics of |Parser|.
+Since the semantics of |Parser| refer to a state, the predicates depend on this state.
 We can incorporate a mutable state of type |s| in predicate transformer semantics
 by replacing the propositions in |Set| with predicates over the state in |s → Set|.
-We define the resulting type of stateful predicate transformers for an effect |e| to be |PTS s e|, as follows:
+We define the resulting type of stateful predicate transformers for an effect with signature |e| to be |PTS s e|, as follows:
 \begin{code}
   record PTS (s : Set) (e : Sig) : Set where
     constructor mkPTS
@@ -1198,7 +1197,7 @@ Using |ptAll|'s semantics for the |Fail| command gives the following semantics f
 \end{code}
 %endif
 
-With the predicate transformer semantics of |EParse|,
+With the predicate transformer semantics of |Parser|,
 we can define the language accepted by a parser in the |Free| monad as a predicate over strings:
 a string |xs| is in the language of a parser |S| if the postcondition ``all characters have been consumed'' is satisfied.
 \begin{code}
