@@ -238,28 +238,13 @@ open import Data.Char using (Char; _≟_)
 String = List Char
 \end{code}
 %endif
-To see how we can use the |Free| monad for writing and verifying a parser,
-and more specifically how we use the |Nondet| effect for writing
-and the |wpNondetAll| semantics for verifying a parser,
-we will look at parsing a given regular language.
-Our approach is first to define the specification of a parser,
-then inspect this specification to write the first implementation and prove (partial) correctness of this implementation.
-We will later improve this implementation by refining it.
-\begin{Def}[\cite{dragon-book}]
-The class of \emph{regular languages} is the smallest class such that:
-\begin{itemize}
-\item the empty language is regular,
-\item the language containing only the empty string is regular,
-\item for each character \texttt{x}, the language containing only the string |"x"| is regular,
-\item the union and concatenation of regular languages are regular, and
-\item the repetition of a regular language is regular.
-\end{itemize}
-\end{Def}
+To illustrate how to reason about non-deterministic code, we begin by
+defining a regular expression matcher. Initially, we will restrict
+ourselves to non-recursive regular expressions; we will add recursion
+in the next section.
 
-A regular language can defined using a regular expression,
-which we will represent as an element of the |Regex| datatype.
-An element of this type represents the syntax of a regular language,
-and we will generally identify a regular expression with the language it denotes.
+We begin by defining the |Regex| datatype for regular expressions as
+follows: An element of this type represents the syntax of a regular
 % Introduce formatting for the * operator later, to avoid confusion with multiplication.
 %if style == poly
 %format _* = "\_\!\mathbin{\star}"
@@ -274,16 +259,18 @@ data Regex : Set where
   _·_        : Regex -> Regex -> Regex
   _*         : Regex -> Regex
 \end{code}
-Here, |Empty| is an expression for empty language (which matches no strings at all),
-while |Epsilon| is an expression for the language of the empty string (which matches exactly one string: |""|).
+Note that the |Empty| regular expression corresponds to the empty
+language, while the |Epsilon| expression only matches the empty
+string. Furthermore, our language for regular expressions is closed
+under choice (|_∣_|), concatenation (|_·_|) and linear repetition
+denoted by the Kleene star (|_*|).
 
-What should a parser for regular languages output?
-If we only want to know whether a string matches a regular expression, we can return a |Bool|.
-If we want to know more, we could annotate the regular expression with capture groups,
-and say that the output of the parser maps each capture group to the substring that the capture group matches.
-We can also return a full parse tree, mirroring the structure of the expression.
-In our implementation, we will go for the last option as it provides the most information,
-setting ourselves a more interesting verification goal.
+What should our regular expression matcher return?  A Boolean value is
+not particularly informative; yet we also choose not to provide an
+intrinsically correct definition, instead performing extrensic
+verification using our predicate transformer semantics. The |tree|
+data type below, captures a potential parse tree associated with a
+given regular expression:
 \begin{code}
 tree : Regex -> Set
 tree Empty          = ⊥
@@ -293,16 +280,19 @@ tree (l ∣ r)        = Either (tree l) (tree r)
 tree (l · r)        = Pair (tree l) (tree r)
 tree (r *)          = List (tree r)
 \end{code}
+In the remainder of this section, we will develop a regular expression
+matcher with the following type:
+\begin{spec}
+  match : (r : Regex) (xs : String) -> Free ENondet (tree r)  
+\end{spec}
+Before we do so, however, we will complete our specification. Although
+the type above guarantees that we return a parse tree matching the
+regular expression |r|, there is no relation between the tree and the
+input string. To capture this relation, we define the following
+|Match| data type. A value of type |Match r xs t| states that the
+string |xs| is in the language given by the regular expression |r| as
+witnessed by the parse tree |t|:
 
-Not every value of |tree r| represents a correct parse of a string:
-for example the regex |r = Singleton 'x'| has |'y' : Tree r| as an invalid parse tree.
-This illustrates that |tree| itself is not sufficient to specify parsers.
-In Agda, we can represent the semantics of the |Regex| type
-by giving a relation between a |Regex| and a |String| on the one hand (the input of the parser),
-and a parse tree on the other hand (the output of the parser).
-If the |Regex| and |String| do not match, there should be no output,
-otherwise the output consists of all relevant parse trees.
-We give the relation using the following inductive definition:
 \begin{code}
 data Match : (r : Regex) -> String -> tree r -> Set where
   Epsilon     :                                                                                                      Match Epsilon Nil tt
@@ -314,29 +304,30 @@ data Match : (r : Regex) -> String -> tree r -> Set where
   StarNil     : (implicit(r : Regex))                                                                                Match (r *) Nil Nil
   StarConcat  : (implicit(r : Regex)) (implicit(xs : String)) (implicit(y : tree r)) (implicit(ys : List (tree r)))  Match (r · (r *)) xs (y , ys) -> Match (r *) xs (y :: ys)
 \end{code}
-Note that there is no constructor for |Match Empty xs ms| for any |xs| or |ms|,
-which we interpret as that there is no way to match the |Empty| language with a string |xs|.
-Similarly, the only constructor for |Match Epsilon xs ms| is where |xs| is the empty string |Nil|.
+%TODO Hier vallen weer wat unicode symbolen weg, zoals de cdot voor concatenatie.
+Note that there is no constructor for |Match Empty xs ms| for any |xs|
+or |ms|, as there is no way to match the |Empty| language with a
+string |xs|.  Similarly, the only constructor for |Match Epsilon xs
+ms| is where |xs| is the empty string |Nil|. There are two
+constructors that produce a |Match| for a regular expression of the
+form |l ∣ r|, corresponding to the choice of matching either |l| or
+|r|.
 
-Since the definition of |Match| allows for multiple ways that a given |Regex| and |String| may match,
-such as in the trivial case where the |Regex| is of the form |r ∣ r|,
-and it also has cases where there is no way to match a |Regex| and a |String|,
-such as where the |Regex| is |Empty|,
-we can immediately predict some parts of the implementation of the |match| function.
-Whenever we encounter an expression of the form |l ∣ r|, we make a nondeterministic |Choice| between either |l| or |r|.
-Similarly, whenever we encounter the |Empty| expression, we immediately |fail|.
-In the previous analysis steps, we have already assumed that we implement the parser by structural recursion on the |Regex|,
-so let us consider other cases.
+The cases for concatenation and iteration are more
+interesting. Crucially the |Concat| constructor constructs a match on
+the concatenation of the strings |xs| and |zs| -- although there may
+be many possible ways to decompose a string into two
+substrings. Finally, the two constructors for the Kleene star, |r ⋆|
+match zero (|StarNil|) or many (|StarConcat|) repetitions of |r|.
 
-The implementation for concatenation is not as immediately obvious.
-One way that we can deal with it is to not only return a |tree| from the parser.
-Instead, the parser also returns the unmatched portion of the string,
-and when we have to match a regular expression of the form |l · r| with a string |xs|,
-we match |l| with |xs| giving a left over string |ys|, then match |r| with |ys|.
-We can also do without changing the return values of the parser,
-by nondeterministically splitting the string |xs| into |ys ++ zs|.
-That is what we do in a helper function |allSplits|,
-which nondeterministically chooses such |ys| and |zs| and returns them as a pair.
+We will now turn our attention to the |match| function. The complete
+definition, by induction on the argument regular expression, can be
+found in Figure~\ref{fig:match}. Most of the cases are
+straightforward---the most difficult case is that for concatenation,
+where we non-deterministically consider all possible splittings of the
+input string |xs| into a pair of strings |ys| and |zs|. The
+|allSplits| function, defined below, computes all possible splittings:
+
 %if style == newcode
 \begin{code}
 module AlmostRegex where
@@ -353,76 +344,87 @@ module AlmostRegex where
     (Pure (Nil , (x :: xs)))
     (allSplits xs >>= λ {(ys , zs) → Pure ((x :: ys) , zs)})
 \end{code}
-
-Armed with this helper function, we can write the first part of a nondeterministic regular expression matcher,
-that does a case distinction on the expression and then checks that the string has the correct format.
+\begin{figure}
 \begin{code}
-  match : (r : Regex) (xs : String) -> Free Nondet (tree r)
-  match Empty xs = fail
-  match Epsilon Nil = Pure tt
-  match Epsilon (_ :: _) = fail
-  match (Singleton c) Nil = fail
-  match (Singleton c) (x :: Nil) with c ≟ x
-  match (Singleton c) (.c :: Nil) | yes refl = Pure c
-  match (Singleton c) (x :: Nil) | no ¬p = fail
-  match (Singleton c) (_ :: _ :: _) = fail
-  match (l · r) xs = do
+  match : (r : Regex) (xs : String) -> Free ENondet (tree r)
+  match Empty          xs             = fail
+  match Epsilon        Nil            = Pure tt
+  match Epsilon        (_ :: _)       = fail
+  match (Singleton c)  Nil            = fail
+  match (Singleton c)  (x :: Nil)     with c ≟ x
+  match (Singleton c)  (.c :: Nil)    | yes refl  = Pure c
+  match (Singleton c)  (x :: Nil)     | no ¬p     = fail
+  match (Singleton c)  (_ :: _ :: _)  = fail
+  match (l ∣ r)        xs             = choice (Inl <$> match l xs) (Inr <$> match r xs)  
+  match (l · r)        xs             = do
     (ys , zs) <- allSplits xs
     y <- match l ys
     z <- match r zs
     Pure (y , z)
-  match (l ∣ r) xs = choice (Inl <$> match l xs) (Inr <$> match r xs)
-\end{code}
-Unfortunately, we get stuck in the case of |_*|.
-We could do a similar construction to |l · r|,
-where we split the string into two parts and match the first part with |r| and the second part with |r *|,
-but this definition will be rejected by Agda, since it does not terminate.
-Since there is no easy way to handle this case for now,
-we just |fail| when we encounter a regex |r *|.
-\begin{code}
-  match (r *) xs = fail
-\end{code}
+  match (r *) xs = fail    
+  \end{code}
+  \caption{The definition of the |match| function}
+  \label{fig:match}
+\end{figure}  
+Finally, we cannot yet handle the case for the Kleene star.  We could
+attempt to mimick the case for concatenation, attempting to match |r ·
+(r ⋆)|. This definition, however, is rejected by Agda as it is not
+structurally recursive. For now, however, we choose to simply fail on
+all such regular expressions.
 
-Still, we can prove that this matcher works, as long as the regular expression does not contain |_*|.
-In other words, we can prove that the |match| function satisfies the postcondition given by the type |Match|,
-as long as the precondition |hasNo*| holds:
+Still, we can prove that the |match| function behaves correctly on all
+regular expressions that do not contain iteration. The |hasNo*|
+predicate holds of all such iteration-free regular expressions:
 \begin{code}
   hasNo* : Regex -> Set
+\end{code}
+%if style == newcode
+\begin{code}
   hasNo* Empty = ⊤
   hasNo* Epsilon = ⊤
   hasNo* (Singleton x) = ⊤
   hasNo* (l · r) = hasNo* l ∧ hasNo* r
   hasNo* (l ∣ r) = hasNo* l ∧ hasNo* r
   hasNo* (r *) = ⊥
-
+\end{code}
+%endif
+To verify our matcher is correct, we need to prove that it satisfies
+the specification consisting of the following pre- and postcondition:
+\begin{code}
   pre : (r : Regex) (xs : String) -> Set
   pre r xs = hasNo* r
   post : (r : Regex) (xs : String) -> tree r -> Set
   post = Match
 \end{code}
-In order to state that |match| works correctly,
-we need to determine its semantics: is the nondeterminism angelic or demonic?
-Since the use of nondeterminism in |match| is to find all correct matches,
-we want that all values potentially returned are correct,
-as specified by the |ptAll| semantics used in |wpNondetAll|.
-We conclude that our goal is to prove |wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)|.
+The main correctness result can now be formulated as follows:
+\begin{code}
+  matchSound : ∀ r xs ->
+    wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)
+\end{code}
+This lemma guarantees that all the parse trees computed by the |match|
+function satisfy the |Match| relation, provided the input regular
+expression does not contain iteration. Although we have omitted the
+proof, we will sketch the key lemmas and definitions that are
+necessary to complete it.
 
-If we now try to give a correctness proof with respect to this pre- and postcondition,
-we run into an issue in cases where the definition makes use of the |_>>=_| operator.
-The |wp|-based semantics completely unfolds the left hand side,
-before it can talk about the right hand side.
-Whenever our matcher makes use of structural recursion on the left hand side of a |_>>=_|
-(more specifically, in the definition of |allSplits| and in the cases of |l · r| and |l ∣ r|),
-we cannot make progress in our proof without reducing this left hand side to a recursion-less expression.
-We need a lemma relating the semantics of program composition to the semantics of individual programs,
-which is also known as the law of consequence for traditional predicate transformer semantics.\todo{cite?}
+First of all, we quickly run into problems as soon as we need to
+reason about programs composed using the monadic bind operator. In
+particular, when verifying the case for |l · r|, we would like to use
+our induction hypotheses on two recursive calls. To do, we prove the
+following lemma that allows us to replace the semantics of a composite
+program built using the monadic bind operation with the composition of
+the underlying predicate transformers:
 \begin{code}
   consequence : (Forall(a b es P)) ∀ pt (mx : Free es a) (f : a -> Free es b) ->
     wp pt mx (λ x -> wp pt (f x) P) == wp pt (mx >>= f) P
+\end{code}
+%if style == newcode
+\begin{code}
   consequence pt (Pure x) f = refl
   consequence pt (Op c k) f = cong (pt c)
     (extensionality λ x -> consequence pt (k x) f)
 \end{code}
+%endif
 Substituting along this equality gives us the lemmas we need to deal with the |_>>=_| operator:
 \begin{code}
   wpToBind : (Forall (a b es pt P)) (mx : Free es a) (f : a -> Free es b) ->
@@ -445,14 +447,16 @@ Since we make use of |allSplits| in the definition, we first give its correctnes
   allSplitsPost xs (ys , zs) = xs == ys ++ zs
   allSplitsSound : ∀ xs ->
     wpSpec [[ ⊤ , allSplitsPost xs ]] ⊑ wpNondetAll (allSplits xs)
+\end{code}
+We refer to the accompanying code for the complete details of these
+proofs.
+%if style == newcode
+\begin{code}
   allSplitsSound Nil        P (preH , postH) = postH _ refl
   allSplitsSound (x :: xs)  P (preH , postH) = postH _ refl ,
     wpToBind (allSplits xs) _ (allSplitsSound xs _ (tt ,
       λ _ H → postH _ (cong (x ::_) H)))
-\end{code}
-Then, using |wpToBind|, we incorporate this correctness proof in the correctness proof of |match|.
-Apart from having to introduce |wpToBind|, the proof essentially follows automatically from the definitions.
-\begin{code}
+  
   matchSound : ∀ r xs ->
     wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)
   matchSound Empty xs           P (preH , postH) = tt
@@ -476,7 +480,7 @@ Apart from having to introduce |wpToBind|, the proof essentially follows automat
       λ _ rH → postH _ (OrRight rH)))
   matchSound (r *) xs P (() , postH)
 \end{code}
-
+%endif
 \section{Combining nondeterminism and general recursion} \label{sec:combinations}
 The matcher we have defined in the previous section is unfinished,
 since it is not able to handle regular expressions that incorporate the Kleene star.

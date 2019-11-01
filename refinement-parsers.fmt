@@ -207,6 +207,7 @@
 %format <$> = "\langle\$\rangle"
 %format terminates-in = "\text{\itshape terminates-in}"
 %format terminates-fmap = "\text{\itshape terminates-fmap}"
+%format == = "\equiv"
 %else
 %format (Forall (a)) = "forall { " a " } -> "
 %format (Exists (a) (b) (c)) = "Sigma " (b) " \ " a " -> " (c)
