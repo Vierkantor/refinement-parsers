@@ -1,4 +1,4 @@
-\documentclass{llncs}
+\documentclass{eptcs}
 
 \usepackage[style=alphabetic,natbib=true]{biblatex}
 \addbibresource{handlers.bib}
@@ -24,13 +24,19 @@ P ⊆ Q = ∀ x -> P x -> Q x
 
 \begin{document}
 
-\title{Verified parsers using the refinement calculus and algebraic effects}
+\title{A predicate transformer semantics of parser combinators}
+\def\titlerunning{A predicate transformer semantics of parser combinators}
+\def\authorrunning{Tim Baanen and Wouter Swierstra}
 % Of misschien iets als:
 % A predicate transformer semantics for parsing
 % Verifying parser combinators using predicate transformers
-\author{Tim Baanen \and Wouter Swierstra}
-\institute{Vrije Universiteit Amsterdam, Utrecht University
-\email{\{t.baanen@@vu.nl,w.s.swierstra@@uu.nl\}}}
+\author{Tim Baanen
+  \institute{Vrije Universiteit Amsterdam}
+    \and
+    Wouter Swierstra
+  \institute{Utrecht University}
+  }    
+%\email{\{t.baanen@@vu.nl,w.s.swierstra@@uu.nl\}}}
 %
 \maketitle              % typeset the header of the contribution
 
@@ -481,7 +487,7 @@ proofs.
   matchSound (r *) xs P (() , postH)
 \end{code}
 %endif
-\section{Combining nondeterminism and general recursion} \label{sec:combinations}
+\section{General recursion and non-determinism} \label{sec:combinations}
 The matcher we have defined in the previous section is unfinished,
 since it is not able to handle regular expressions that incorporate the Kleene star.
 The fundamental issue is that the Kleene star allows for arbitrarily many distinct matchings in certain cases.
