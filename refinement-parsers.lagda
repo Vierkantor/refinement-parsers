@@ -90,7 +90,9 @@ All the programs and proofs in this paper are written in the dependently typed l
 
 \section{Recap: algebraic effects and predicate transformers}
 Algebraic effects separate the \emph{syntax} and \emph{semantics} of
-effectful operations. The syntax is given by a signature of the operations:
+effectful operations. In this paper, we will model the by taking the
+free monad over a given signature, describing certain
+operations. The type of such a signature is defined as follows:
 \begin{code}
 record Sig : Set where
   constructor mkSig
@@ -106,11 +108,12 @@ non-deterministic choice between two values, |Choice|; and a failure
 operator, |Fail|.
 \begin{code}    
 data CNondet : Set where
-  Fail : CNondet
-  Choice : CNondet
+  Choice  : CNondet  
+  Fail    : CNondet
+
 RNondet : CNondet -> Set
-RNondet Fail = ⊥
-RNondet Choice = Bool
+RNondet Choice  = Bool  
+RNondet Fail    = ⊥
 
 Nondet = mkSig CNondet RNondet
 \end{code}
@@ -125,7 +128,7 @@ corresponding \emph{free monad}:
 \begin{code}
   data Free (e : Sig) (a : Set) : Set where
     Pure : a -> Free e a
-    Op : (c : C e) -> (R e c -> Free e a) -> Free e a
+    Op   : (c : C e) -> (R e c -> Free e a) -> Free e a
 \end{code}
 This gives a monad, with the bind operator defined as follows:
 \begin{code}
@@ -141,7 +144,7 @@ This gives a monad, with the bind operator defined as follows:
 %endif
 To facilitate programming with effects, we define the following smart
 constructors, sometimes referred to as \emph{generic effects} in the
-literature on algebraic effects:
+literature: %TODO citation
 \begin{code}
   fail : (Forall(a)) Free Nondet a
   fail = Op Fail λ ()
@@ -155,16 +158,17 @@ by mapping them to \emph{predicate transformers}.
 % bovendien zou ik de volgorde van de argumenten omdraaien:
 % (a -> Set) -> (Free (mkSig C R) a -> Set)
 % dit is makkelijker te herkennen als predicate transformer
+Each semantics will be defined as a fold over the free monad, mapping
+some predicate |P : a -> Set| to a predicate on the result of the free
+monad to a predicate of the entire computation of type |Free (eff C R) a -> Set|:
 \begin{code}
-  wp : {C : Set} {R : C -> Set} -> ((c : C) -> (R c -> Set) -> Set) ->
-    {a : Set} -> Free (mkSig C R) a -> (a -> Set) -> Set
-  wp alg (Pure x) P = P x
-  wp alg (Op c k) P = alg c λ x -> wp alg (k x) P
+  wp : (implicit(C : Set)) (implicit(R: C -> Set)) (implicit(a : Set)) ((c : C) -> (R c -> Set) -> Set) ->
+    (a -> Set) -> (Free (mkSig C R) a -> Set)
+  wp alg P (Pure x)  = P x
+  wp alg P (Op c k)  = alg c λ x -> wp alg (k x) P
 \end{code}
-This semantics is given by a catamorphism over the free monad,
-computing the proposition that captures the programs semantics. For
-non-determinism, for example, we may want to require that a given
-predicate |P| holds for all possible results that may be returned: 
+In the case of non-determinism, for example, we may want to require that a given
+predicate |P| holds for all possible results that may be returned:
 %if style == newcode
 \begin{code}
 module Nondet where
@@ -172,7 +176,7 @@ module Nondet where
 %endif
 \begin{code}
   ptAll : (c : CNondet) -> (RNondet c -> Set) -> Set
-  ptAll Fail P    = ⊤
+  ptAll Fail   P  = ⊤
   ptAll Choice P  = P True ∧ P False
 \end{code}
 
@@ -184,13 +188,14 @@ module NoCombination2 where
 \end{code}
 %endif
 \begin{code}
-  wpNondetAll : (Forall(a)) Free Nondet a -> (a -> Set) -> Set
-  wpNondetAll S P = wp ptAll S P
+  wpNondetAll : (Forall(a)) (a -> Set) -> (Free ENondet a -> Set)
+  wpNondetAll = wp ptAll 
 \end{code}
 
-Using these semantics, we will relate programs to their
-specifications. The specifications we will consider throughout this
-paper consist of a pre- and postcondition. 
+Predicate transformers provide a single semantic domain to relate
+programs and specifications.%cite refinement calculus?
+Throughout this paper, we will consider specifications consisting of a
+pre- and postcondition:
 \begin{code}
 module Spec where
   record Spec (a : Set) : Set where
@@ -199,11 +204,11 @@ module Spec where
       pre : Set
       post : a -> Set
 \end{code}
-Just as we did for our effects, we can also assign a predicate
-transformer semantics to our specifications:
+Inspired by work on the refinement calculus, we can assign a predicate
+transformer semantics to specifications as follows:
 \begin{code}    
-  wpSpec : (Forall(a)) Spec a -> (a -> Set) -> Set
-  wpSpec [[ pre , post ]] P = pre ∧ (∀ o -> post o -> P o)
+  wpSpec : (Forall(a)) (a -> Set) -> (Spec a -> Set)
+  wpSpec P [[ pre , post ]] = pre ∧ (∀ o -> post o -> P o)
 \end{code}
 This computes the `weakest precondition' necessary for a specification
 to imply that the desired postcondition |P| holds. In particular, the
@@ -215,11 +220,9 @@ Finally, we use the \emph{refinement relation} to compare programs and specifica
   _⊑_ : (Forall(a : Set)) (pt1 pt2 : (a -> Set) -> Set) -> Set
   pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
 \end{code}
-A program or specification |S₁| is refined by |S₂| if |S₂| is ``better'' in the following way:
-all postconditions that |S₁| can make true, |S₂| can also make true.
-By mapping programs and specifications to their corresponding
-predicate transformers, the verification process can treat them uniformly.
-It is easy to show that the refinement relation is both transitive and
+Together with the predicate transformer semantics we have defined
+above, this refinement relation can be used to relate programs to
+their specifications. This refinement relation is both transitive and
 reflexive.
 %if style == newcode
 \begin{code}
@@ -228,7 +231,7 @@ reflexive.
 \end{code}
 %endif
 
-\section{Almost parsing regular languages} \label{sec:regex-nondet}
+\section{Regular languages without recursion} \label{sec:regex-nondet}
 %if style == newcode
 \begin{code}
 open import Data.Char using (Char; _≟_)
