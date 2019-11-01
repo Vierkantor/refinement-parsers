@@ -1,4 +1,4 @@
-\documentclass{llncs}
+\documentclass{eptcs}
 
 \usepackage[style=alphabetic,natbib=true]{biblatex}
 \addbibresource{handlers.bib}
@@ -24,13 +24,19 @@ P ⊆ Q = ∀ x -> P x -> Q x
 
 \begin{document}
 
-\title{Verified parsers using the refinement calculus and algebraic effects}
+\title{A predicate transformer semantics of parser combinators}
+\def\titlerunning{A predicate transformer semantics of parser combinators}
+\def\authorrunning{Tim Baanen and Wouter Swierstra}
 % Of misschien iets als:
 % A predicate transformer semantics for parsing
 % Verifying parser combinators using predicate transformers
-\author{Tim Baanen \and Wouter Swierstra}
-\institute{Vrije Universiteit Amsterdam, Utrecht University
-\email{\{t.baanen@@vu.nl,w.s.swierstra@@uu.nl\}}}
+\author{Tim Baanen
+  \institute{Vrije Universiteit Amsterdam}
+    \and
+    Wouter Swierstra
+  \institute{Utrecht University}
+  }    
+%\email{\{t.baanen@@vu.nl,w.s.swierstra@@uu.nl\}}}
 %
 \maketitle              % typeset the header of the contribution
 
@@ -477,12 +483,16 @@ proofs.
   matchSound (r *) xs P (() , postH)
 \end{code}
 %endif
-\section{Combining nondeterminism and general recursion} \label{sec:combinations}
-The matcher we have defined in the previous section is unfinished,
-since it is not able to handle regular expressions that incorporate the Kleene star.
-The fundamental issue is that the Kleene star allows for arbitrarily many distinct matchings in certain cases.
-For example, matching |Epsilon *| with the empty string |""| will allow for repeating the |Epsilon| arbitrarily often, since |Epsilon · (Epsilon *)| is equivalent to both |Epsilon| and |Epsilon *|.
-Thus, we cannot implement |match| on the |_*| operator by helping Agda's termination checker.
+\section{General recursion and
+  non-determinism} \label{sec:combinations} The matcher we have
+defined in the previous section is unfinished, since it is not able to
+handle regular expressions defined using the Kleene star.  The
+fundamental issue is that the Kleene star allows for arbitrarily many
+distinct matchings in certain cases.  For example, matching |Epsilon
+*| with the empty string |""| will allow for repeating the |Epsilon|
+arbitrarily often, since |Epsilon · (Epsilon *)| is equivalent to both
+|Epsilon| and |Epsilon *|.  Thus, we cannot implement |match| on the
+|_*| operator by helping Agda's termination checker.
 
 What we will do instead is to deal with the recursion as an effect.
 A recursively defined (dependent) function of type |(i : I) -> O i|
