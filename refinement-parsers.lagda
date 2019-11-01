@@ -37,32 +37,35 @@ P ⊆ Q = ∀ x -> P x -> Q x
 \section{Introduction}
 \label{sec:intro}
 
-There is a significant body of work on parser combinators
-\cite{hutton, swierstra-duponcheel, list-of-successes,others?},
+There is a significant body of work on parsing using combinators
 % TODO Check het paper van Nils anders danielsson voor een veeeel langere lijst
 % met referenties over parser combinators
-typically defined in a lazy functional programming language. 
+in functional programming languages~\cite{hutton, swierstra-duponcheel, list-of-successes,others?},. 
 Yet how can we ensure that these parsers are correct? There is notably
 less work that attempts to  answer this
 question~\cite{total-parser-combinators, firsov-certification-context-free-grammars}.
 
+Reasoning about such parser combinators is not at all trivial; they
+use a variety of effects: state to store the string being parsed;
+non-determinism to handle backtracking; and general recursion to deal
+with recursive grammars. Proof techniques, such as equational
+reasoning, that commonly used when reasoning about pure functional programs, are less
+suitable when verifying effectful programs.%TODO Cite Fulgur and hutton? just do it?
+
 In this paper, we explore a novel approach, drawing inspiration from
 recent work on algebraic effects~\cite{eff, effect-handlers-in-scope,
-  McBride-totally-free}.  Parser combinators typically use a
-combination of effects: state to store the string being parsed;
-non-determinism to handle backtracking; and general recursion to
-handle recursive grammars.
-
-We demonstrate how to reason about all these effects uniformly using
+  McBride-totally-free}.  
+We demonstrate how to reason about all parsers uniformly using
 \emph{predicate transformers}~\cite{pt-semantics-for-effects}.
-We extend previous work that uses predicate transformer semantics to reason about one effect,
-assigning predicate transformer semantics to a combination of effects.
-Our semantics is modular, allowing us to introduce concepts only when they are needed,
-and do this without having to rework the previous definitions.
+We extend our previous work that uses predicate transformer semantics to reason about a single effect
+to handle the combinations of effects used by parsers.
+Our semantics is modular, allowing us to introduce concepts %TODO: wat bedoel je hier met concepts?
+only when they are needed,
+without having to rework the previous definitions.
 In particular, our careful treatment
-of general recursion lets us separate the (partial) correctness of the
-combinators from their termination in a clean fashion. Most existing
-proofs require combinators to show that the string being parsed
+of general recursion lets us separate the partial correctness of the
+combinators from their termination cleanly. Most existing
+proofs require combinators to guarantee that the string being parsed
 decreases, conflating termination and correctness.
 
 In particular, this paper makes the following novel contributions:
