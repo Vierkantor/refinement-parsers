@@ -168,10 +168,10 @@ Each semantics will be defined as a fold over the free monad, mapping
 some predicate |P : a -> Set| to a predicate on the result of the free
 monad to a predicate of the entire computation of type |Free (eff C R) a -> Set|:
 \begin{code}
-  wp : (implicit(C : Set)) (implicit(R: C -> Set)) (implicit(a : Set)) ((c : C) -> (R c -> Set) -> Set) ->
-    (a -> Set) -> (Free (mkSig C R) a -> Set)
-  wp alg P (Pure x)  = P x
-  wp alg P (Op c k)  = alg c λ x -> wp alg (k x) P
+  wp : (implicit(C : Set)) (implicit(R : C -> Set)) (implicit(a : Set)) ((c : C) -> (R c -> Set) -> Set) ->
+    Free (mkSig C R) a -> (a -> Set) -> Set
+  wp alg (Pure x) P  = P x
+  wp alg (Op c k) P  = alg c λ x -> wp alg (k x) P
 \end{code}
 In the case of non-determinism, for example, we may want to require that a given
 predicate |P| holds for all possible results that may be returned:
@@ -194,7 +194,7 @@ module NoCombination2 where
 \end{code}
 %endif
 \begin{code}
-  wpNondetAll : (Forall(a)) (a -> Set) -> (Free ENondet a -> Set)
+  wpNondetAll : (Forall(a)) Free Nondet a -> (a -> Set) -> Set
   wpNondetAll = wp ptAll 
 \end{code}
 
@@ -213,8 +213,8 @@ module Spec where
 Inspired by work on the refinement calculus, we can assign a predicate
 transformer semantics to specifications as follows:
 \begin{code}    
-  wpSpec : (Forall(a)) (a -> Set) -> (Spec a -> Set)
-  wpSpec P [[ pre , post ]] = pre ∧ (∀ o -> post o -> P o)
+  wpSpec : (Forall(a)) Spec a -> (a -> Set) -> Set
+  wpSpec [[ pre , post ]] P = pre ∧ (∀ o -> post o -> P o)
 \end{code}
 This computes the `weakest precondition' necessary for a specification
 to imply that the desired postcondition |P| holds. In particular, the
@@ -228,7 +228,7 @@ Finally, we use the \emph{refinement relation} to compare programs and specifica
 \end{code}
 Together with the predicate transformer semantics we have defined
 above, this refinement relation can be used to relate programs to
-their specifications. This refinement relation is both transitive and
+their specifications. The refinement relation is both transitive and
 reflexive.
 %if style == newcode
 \begin{code}
@@ -289,7 +289,7 @@ tree (r *)          = List (tree r)
 In the remainder of this section, we will develop a regular expression
 matcher with the following type:
 \begin{spec}
-  match : (r : Regex) (xs : String) -> Free ENondet (tree r)  
+  match : (r : Regex) (xs : String) -> Free Nondet (tree r)
 \end{spec}
 Before we do so, however, we will complete our specification. Although
 the type above guarantees that we return a parse tree matching the
@@ -352,7 +352,7 @@ module AlmostRegex where
 \end{code}
 \begin{figure}
 \begin{code}
-  match : (r : Regex) (xs : String) -> Free ENondet (tree r)
+  match : (r : Regex) (xs : String) -> Free Nondet (tree r)
   match Empty          xs             = fail
   match Epsilon        Nil            = Pure tt
   match Epsilon        (_ :: _)       = fail
@@ -463,8 +463,6 @@ proofs.
     wpToBind (allSplits xs) _ (allSplitsSound xs _ (tt ,
       λ _ H → postH _ (cong (x ::_) H)))
   
-  matchSound : ∀ r xs ->
-    wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)
   matchSound Empty xs           P (preH , postH) = tt
   matchSound Epsilon Nil        P (preH , postH) = postH _ Epsilon
   matchSound Epsilon (x :: xs)  P (preH , postH) = tt
