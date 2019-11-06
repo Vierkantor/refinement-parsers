@@ -1802,12 +1802,32 @@ As for partial correctness, we obtain the proof of termination by applying |filt
 
 \section{Discussion}
 
-In this paper, we have verified several parsing algorithms,
-mirroring work by \citet{harper-regex, total-parser-combinators, firsov-certification-context-free-grammars}, among others. 
-% TODO: discuss related work
+In this paper, we have described a representation of parsers and shown how to perform verification of parsers in this representation.
+We will discuss how our work relates to other parser verifications.
+Our sections on regular expressions have a similar structure to a Functional Pearl by \citet{harper-regex}.
+The main difference is that our work is based on formal verification using Agda,
+while \citeauthor{harper-regex} uses manual and informal reasoning.
+The sections on context-free grammars could be compared to work by \citet{total-parser-combinators, firsov-certification-context-free-grammars}.
+Here the difference, apart from a different parsing algorithm, can be found in how (non)termination is dealt with.
+We opt for a strong separation of syntax and semantics,
+using the |Rec| effect to give the syntax of programs regardless of termination,
+later proving the semantic property of termination.
+In contrast, \citeauthor{total-parser-combinators, firsov-certification-context-free-grammars}
+deal with termination syntactically, either by incorporating delay and force operators in the grammar,
+or explicitly passing around a proof of termination in the definition of the parser.
+
+A different representation of languages used in verification is the \emph{coinductive trie}~\cite{coinductive-trie}.
+The approach of \citeauthor{coinductive-trie} is in the opposite direction to ours:
+in order to verify constructions on automata, the language they accept is mapped to a trie,
+then this trie is compared to the trie that we get by applying the corresponding constructions on tries.
+Similarly, \citet{ooagda} use a coinductive type to represent effectful programs with arbitrarily large input.
+These two coinductive constructions carry proofs of productivity, in the form of sized types, in their definitions,
+again mixing syntax and semantics.
 % perhaps also Validating LR(1) Parsers https://link.springer.com/chapter/10.1007/978-3-642-28869-2_20
-Our work is characterised by its modularity,
-allowing us to introduce the combination of effects, petrol-driven termination, semantics for state and variant-based termination without impacting existing definitions.
+
+In conclusion, the two distinguishing features of our work are formality and modularity.
+We could introduce the combination of effects, petrol-driven termination, semantics for state and variant-based termination
+without impacting existing definitions.
 We strictly separate the syntax and semantics of the programs,
 and partial correctness from termination.
 This results in verification proofs that do not need to carry around many goals,
