@@ -108,7 +108,8 @@ record Sig : Set where
 \end{code}
 Here the type |C| contains the `commands', or effectful operations
 that a given effect supports. For each command |c : C|, the type |R c|
-describes the possible responses. %TODO cite containers paper
+describes the possible responses.
+The structure on a signature is that of a \emph{container}~\cite{categories-of-containers}.
 For example, the following signature describes two operations: the
 non-deterministic choice between two values, |Choice|; and a failure
 operator, |Fail|.
@@ -150,7 +151,7 @@ This gives a monad, with the bind operator defined as follows:
 %endif
 To facilitate programming with effects, we define the following smart
 constructors, sometimes referred to as \emph{generic effects} in the
-literature: %TODO citation
+literature~\cite{algebraic-operations-and-generic-effects}:
 \begin{code}
   fail : (Forall(a)) Free Nondet a
   fail = Op Fail λ ()
@@ -310,7 +311,6 @@ data Match : (r : Regex) -> String -> tree r -> Set where
   StarNil     : (implicit(r : Regex))                                                                                Match (r *) Nil Nil
   StarConcat  : (implicit(r : Regex)) (implicit(xs : String)) (implicit(y : tree r)) (implicit(ys : List (tree r)))  Match (r · (r *)) xs (y , ys) -> Match (r *) xs (y :: ys)
 \end{code}
-%TODO Hier vallen weer wat unicode symbolen weg, zoals de cdot voor concatenatie.
 Note that there is no constructor for |Match Empty xs ms| for any |xs|
 or |ms|, as there is no way to match the |Empty| language with a
 string |xs|.  Similarly, the only constructor for |Match Epsilon xs
