@@ -93,11 +93,9 @@
 %format (underlying (a)) = a
 %format ⊑ = "\sqsubseteq"
 %format _⊑_ = "\_\!\sqsubseteq\!\_"
-%format wpS = "\text{\itshape wp}^S"
 %format PTS = "\text{\itshape PT}^S"
 %format PTSs = "\text{\itshape PTs}^S"
 %format SpecS = "\text{\itshape Spec}^S"
-%format wpSpecS = "\text{\itshape wpSpec}^S"
 %format ptRecS = "\text{\itshape ptRec}^S"
 %format ⊑S = "\sqsubseteq^S"
 %format _⊑S_ = "\_\!\sqsubseteq^S\!\_"
@@ -210,6 +208,12 @@
 %format == = "\equiv"
 %format · = "\cdot"
 %format _·_ = "\_\!\cdot\!\_"
+%format (wp (a) (b)) = "\llbracket" b "\rrbracket_{" a "}"
+%format (wpS (a) (b)) = "\llbracket" b "\rrbracket^S_{" a "}"
+%format (wpNondetAll (b)) = "\llbracket" b "\rrbracket_{\text{all}}"
+%format (wpMatch (b)) = "\llbracket" b "\rrbracket_{\text{match}}"
+%format (wpSpec [[ pre , post ]]) = "\llbracket" pre "," post "\rrbracket_{\text{spec}}"
+%format (wpFromProd (a) (b)) = "\llbracket" b "\rrbracket_{\text{fromProd}}\ " a
 %else
 %format (Forall (a)) = "forall { " a " } -> "
 %format (Exists (a) (b) (c)) = "Sigma " (b) " \ " a " -> " (c)

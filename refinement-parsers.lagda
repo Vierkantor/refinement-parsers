@@ -160,19 +160,14 @@ literature~\cite{algebraic-operations-and-generic-effects}:
 \end{code}
 In this paper, we will assign \emph{semantics} to effectful programs
 by mapping them to \emph{predicate transformers}.
-% TODO: ik zou dit niet wp noemen. Eerder iets als ⟦_⟧ -- er is immers
-% geen input waarvoor de preconditie moet gelden
-% bovendien zou ik de volgorde van de argumenten omdraaien:
-% (a -> Set) -> (Free (mkSig C R) a -> Set)
-% dit is makkelijker te herkennen als predicate transformer
 Each semantics will be defined as a fold over the free monad, mapping
 some predicate |P : a -> Set| to a predicate on the result of the free
 monad to a predicate of the entire computation of type |Free (eff C R) a -> Set|:
 \begin{code}
-  wp : (implicit(C : Set)) (implicit(R : C -> Set)) (implicit(a : Set)) ((c : C) -> (R c -> Set) -> Set) ->
+  (wp) : (implicit(C : Set)) (implicit(R : C -> Set)) (implicit(a : Set)) ((c : C) -> (R c -> Set) -> Set) ->
     Free (mkSig C R) a -> (a -> Set) -> Set
-  wp alg (Pure x) P  = P x
-  wp alg (Op c k) P  = alg c λ x -> wp alg (k x) P
+  (wp alg (Pure x)) P  = P x
+  (wp alg (Op c k)) P  = alg c λ x -> (wp (alg) (k x)) P
 \end{code}
 In the case of non-determinism, for example, we may want to require that a given
 predicate |P| holds for all possible results that may be returned:
@@ -195,12 +190,12 @@ module NoCombination2 where
 \end{code}
 %endif
 \begin{code}
-  wpNondetAll : (Forall(a)) Free Nondet a -> (a -> Set) -> Set
-  wpNondetAll = wp ptAll 
+  (wpNondetAll) : (Forall(a)) Free Nondet a -> (a -> Set) -> Set
+  wpNondetAll S = wp ptAll S
 \end{code}
 
 Predicate transformers provide a single semantic domain to relate
-programs and specifications.%cite refinement calculus?
+programs and specifications. %cite refinement calculus?
 Throughout this paper, we will consider specifications consisting of a
 pre- and postcondition:
 \begin{code}
@@ -214,7 +209,7 @@ module Spec where
 Inspired by work on the refinement calculus, we can assign a predicate
 transformer semantics to specifications as follows:
 \begin{code}    
-  wpSpec : (Forall(a)) Spec a -> (a -> Set) -> Set
+  (wpSpec) : (Forall(a)) Spec a -> (a -> Set) -> Set
   wpSpec [[ pre , post ]] P = pre ∧ (∀ o -> post o -> P o)
 \end{code}
 This computes the `weakest precondition' necessary for a specification
@@ -404,8 +399,7 @@ the specification consisting of the following pre- and postcondition:
 \end{code}
 The main correctness result can now be formulated as follows:
 \begin{code}
-  matchSound : ∀ r xs ->
-    wpSpec [[ pre r xs , post r xs ]] ⊑ wpNondetAll (match r xs)
+  matchSound : ∀ r xs -> (wpSpec [[ (pre r xs) , (post r xs) ]]) ⊑ (wpNondetAll (match r xs))
 \end{code}
 This lemma guarantees that all the parse trees computed by the |match|
 function satisfy the |Match| relation, provided the input regular
@@ -422,7 +416,7 @@ program built using the monadic bind operation with the composition of
 the underlying predicate transformers:
 \begin{code}
   consequence : (Forall(a b es P)) ∀ pt (mx : Free es a) (f : a -> Free es b) ->
-    wp pt mx (λ x -> wp pt (f x) P) == wp pt (mx >>= f) P
+    (wp pt mx) (λ x -> (wp pt (f x)) P) == (wp pt (mx >>= f)) P
 \end{code}
 %if style == newcode
 \begin{code}
@@ -434,9 +428,9 @@ the underlying predicate transformers:
 Substituting along this equality gives us the lemmas we need to deal with the |_>>=_| operator:
 \begin{code}
   wpToBind : (Forall (a b es pt P)) (mx : Free es a) (f : a -> Free es b) ->
-    wp pt mx (λ x -> wp pt (f x) P) -> wp pt (mx >>= f) P
+    (wp pt mx) (λ x -> (wp pt (f x)) P) -> (wp pt (mx >>= f)) P
   wpFromBind : (Forall (a b es pt P)) (mx : Free es a) (f : a -> Free es b) ->
-    wp pt (mx >>= f) P -> wp pt mx (λ x -> wp pt (f x) P)
+    (wp pt (mx >>= f)) P -> (wp pt mx) (λ x -> (wp pt (f x)) P)
 \end{code}
 %if style == newcode
 \begin{code}
@@ -451,8 +445,7 @@ Since we make use of |allSplits| in the definition, we first give its correctnes
 \begin{code}
   allSplitsPost : String → String × String → Set
   allSplitsPost xs (ys , zs) = xs == ys ++ zs
-  allSplitsSound : ∀ xs ->
-    wpSpec [[ ⊤ , allSplitsPost xs ]] ⊑ wpNondetAll (allSplits xs)
+  allSplitsSound : ∀ xs -> (wpSpec [[ ⊤ , (allSplitsPost xs) ]]) ⊑ (wpNondetAll (allSplits xs))
 \end{code}
 We refer to the accompanying code for the complete details of these
 proofs.
@@ -616,7 +609,7 @@ and makes intuitive sense: if the precondition holds for a certain postcondition
 a weaker postcondition should also have its precondition hold.
 
 Given a such a list of predicate transformers,
-defining the semantics of an effectful program is a straightforward generalization of |wp|.
+defining the semantics of an effectful program is a straightforward generalization of the previously defined semantics |wp|.
 The |Pure| case is identical, and in the |Op| case we can apply the predicate transformer returned by the |lookupPT| helper function.
 \begin{code}
   lookupPT : (Forall(C R es)) (pts : PTs es) (i : mkSig C R ∈ es) ->
@@ -631,11 +624,11 @@ The |Pure| case is identical, and in the |Op| case we can apply the predicate tr
   lookupMono (pt :: pts) (∈Tail i) = lookupMono pts i
 \end{code}
 %endif
-This results in the following definition of |wp| for combinations of effects.
+This results in the following definition of the semantics for combinations of effects.
 \begin{code}
-  wp : (Forall(a es)) (pts : PTs es) -> Free es a -> (a -> Set) -> Set
-  wp pts (Pure x) P = P x
-  wp pts (Op i c k) P = lookupPT pts i c λ x -> wp pts (k x) P
+  (wp) : (Forall(a es)) (pts : PTs es) -> Free es a -> (a -> Set) -> Set
+  (wp pts (Pure x)) P = P x
+  (wp pts (Op i c k)) P = lookupPT pts i c λ x -> (wp pts (k x)) P
 \end{code}
 
 The effects we are planning to use for |match| are a combination of nondeterminism and general recursion.
@@ -721,9 +714,9 @@ As discussed, we first need to give the specification for |match| before we can 
   matchSpec : (r,xs : Pair Regex String) -> tree (Pair.fst r,xs) -> Set
   matchSpec (r , xs) ms = Match r xs ms
 
-  wpMatch : (Forall(a)) Free (Rec (Pair Regex String) (tree ∘ Pair.fst) :: Nondet :: Nil) a ->
+  (wpMatch) : (Forall(a)) Free (Rec (Pair Regex String) (tree ∘ Pair.fst) :: Nondet :: Nil) a ->
     (a -> Set) -> Set
-  wpMatch = wp (ptRec matchSpec :: ptAll :: Nil)
+  wpMatch S = (wp (ptRec matchSpec :: ptAll :: Nil) S)
 \end{code}
 
 %if style == newcode
@@ -775,10 +768,8 @@ On the other hand, the correctness proof for |match| needs a bit of tweaking to 
 %endif
 Now we are able to prove correctness of |match| on a Kleene star.
 \begin{code}
-  matchSound ((r *) , Nil)        P (preH , postH) =
-    postH _ StarNil
-  matchSound ((r *) , (x :: xs))  P (preH , postH) o H =
-    postH _ (StarConcat H)
+  matchSound ((r *) , Nil)        P (preH , postH) = postH _ StarNil
+  matchSound ((r *) , (x :: xs))  P (preH , postH) o H = postH _ (StarConcat H)
 \end{code}
 
 At this point, we have defined a parser for regular languages
@@ -980,9 +971,10 @@ The meaning of our goal, to show that |match| is refined by |dmatch|,
 is to prove that the output of |dmatch| is a subset of that of |match|.
 Since |match| makes use of |allSplits|, we first prove
 that |allSplits| returns all possible splittings of a string.
+% TODO make this wpMatch allSplits ⊑ wpSpec splitSpec ?
 \begin{code}
   allSplitsComplete : (xs ys zs : String) (P : String × String → Set) →
-    wpMatch (allSplits (hiddenInstance(∈Tail ∈Head)) xs) P → (xs == ys ++ zs) → P (ys , zs)
+    (wpMatch (allSplits (hiddenInstance(∈Tail ∈Head)) xs)) P → (xs == ys ++ zs) → P (ys , zs)
 \end{code}
 %if style == newcode
 \begin{code}
@@ -996,9 +988,9 @@ The proof mirrors |allSplits|, performing induction on |xs|.
 % in the sense of the |_≡_| relation.
 
 Using the preceding lemmas, we can prove the partial correctness of |dmatch| by showing it refines |match|:
+% TODO make this wpMatch dmatch ⊑ wpSpec matchSpec ?
 \begin{code}
-  dmatchSound : ∀ r xs ->
-    wpMatch (match (hiddenInstance(∈Head)) (r , xs)) ⊑ wpMatch (dmatch (hiddenInstance(∈Head)) (r , xs))
+  dmatchSound : ∀ r xs -> (wpMatch (match (hiddenInstance(∈Head)) (r , xs))) ⊑ (wpMatch (dmatch (hiddenInstance(∈Head)) (r , xs)))
 \end{code}
 Since we need to perform the case distinctions of |match| and of |dmatch|,
 the proof is longer than that of |matchSoundness|.
@@ -1059,7 +1051,7 @@ To express that |dmatch| returns something, we use a trivially true postconditio
 and replace the demonic choice of the |ptAll| semantics with the angelic choice of |ptAny|:
 \begin{code}
   dmatchComplete : ∀ r xs y → Match r xs y →
-    wp (ptRec matchSpec :: ptAny :: Nil) (dmatch (hiddenInstance(∈Head)) (r , xs)) (λ _ → ⊤)
+    (wp (ptRec matchSpec :: ptAny :: Nil) (dmatch (hiddenInstance(∈Head)) (r , xs))) (λ _ → ⊤)
 \end{code}
 The proof is short, since |dmatch| can only |fail| when it encounters an empty string and a regex that does not match the empty string, contradicting the assumption immediately:
 \begin{code}
@@ -1174,11 +1166,11 @@ We define the resulting type of stateful predicate transformers for an effect wi
 \end{code}
 %endif
 If we define |PTSs| and |lookupPTS| analogously to |PTs| and |lookupPT|, 
-we can find a weakest precondition that incorporates the current state:
+we have fond a predicate transformer semantics that incorporates the current state:
 \begin{code}
-  wpS : (Forall(s es a)) (pts : PTSs s es) -> Free es a -> (a -> s -> Set) -> s -> Set
-  wpS pts (Pure x) P = P x
-  wpS pts (Op i c k) P = lookupPTS pts i c λ x -> wpS pts (k x) P
+  (wpS) : (Forall(s es a)) (pts : PTSs s es) -> Free es a -> (a -> s -> Set) -> s -> Set
+  (wpS pts (Pure x)) P = P x
+  (wpS pts (Op i c k)) P = lookupPTS pts i c λ x -> (wpS pts (k x)) P
 \end{code}
 
 In this definition for |wpS|, we assume that all effects share access to one mutable variable of type |s|.
@@ -1220,7 +1212,7 @@ a string |xs| is in the language of a parser |S| if the postcondition ``all char
   empty? (_ :: _) = ⊥
 
   _∈[_] : (Forall(a)) String -> Free (Nondet :: Parser :: Nil) a -> Set
-  xs ∈[ S ] = wpS (ptAll :: ptParse :: Nil) S (λ _ -> empty?) xs
+  xs ∈[ S ] = (wpS (ptAll :: ptParse :: Nil) S) (λ _ -> empty?) xs
 \end{code}
 
 \section{Parsing context-free languages} \label{sec:fromProductions}
@@ -1432,11 +1424,10 @@ We choose |ptAll| as the semantics of nondeterminism, since we want to ensure al
 \begin{code}
   pts prods = ptRec (parserSpec prods) :: ptAll :: ptParse :: Nil
 
-  wpFromProd prods = wpS (pts prods)
+  wpFromProd prods S = (wpS (pts prods) S)
 
   partialCorrectness : (prods : Prods) (A : Nonterm) ->
-    wpSpec [[ (hiddenConst(⊤)) , (parserSpec prods A) ]] ⊑
-      wpFromProd prods (fromProds prods A)
+    (wpSpec [[ (hiddenConst(⊤)) , (parserSpec prods A) ]]) ⊑ (wpFromProd prods (fromProds prods A))
 \end{code}
 
 %if style == newcode
@@ -1469,7 +1460,7 @@ Thus, we want to prove the following lemma:
 \begin{code}
     parseStep : ∀ A xs P str ->
       (∀ o str' -> prods ⊢ str ~ xs => o , str' -> P o str') ->
-      wpFromProd prods (buildParser prods xs) P str
+      (wpFromProd prods (buildParser prods xs)) P str
 \end{code}
 The lemma can be proved by reproducing the case distinctions used to define |buildParser|;
 there is no complication apart from having to use the |wpToBind| lemma to deal with the |_>>=_| operator in a few places.
@@ -1493,10 +1484,10 @@ since using an incorrect production rule in the |parseStep| will result in an in
 Thus, we parametrise |filterStep| by a list |prods'| and a proof that it is a sublist of |prods|.
 Again, the proof uses the same distinction as |fromProds| does,
 and uses the |wpToBind| lemma to deal with the |_>>=_| operator.
+% TODO: make ``foldr (choice) (fail) (map ... ...)`` a new definition.
 \begin{code}
-    filterStep : ∀ prods' -> ((Forall(p)) p ∈ prods' -> p ∈ prods) ->
-      ∀ A -> wpSpec [[ (hiddenConst(⊤)) , parserSpec prods A ]] ⊑ wpFromProd prods
-        (foldr (choice (hiddenInstance(∈Tail ∈Head))) (fail (hiddenInstance(∈Tail ∈Head))) (map (fromProd prods) (filterLHS prods A prods')))
+    filterStep : ∀ prods' A -> ((Forall(p)) p ∈ prods' -> p ∈ prods) ->
+      (wpSpec [[ (hiddenConst(⊤)) , (parserSpec prods A) ]]) ⊑ (wpFromProd prods (foldr (choice (hiddenInstance(∈Tail ∈Head))) (fail (hiddenInstance(∈Tail ∈Head))) (map (fromProd prods) (filterLHS prods A prods'))))
     filterStep Nil subset A P xs H = tt
     filterStep (prod lhs rhs sem :: prods') subset A P xs H with A ≟n lhs
     filterStep (prod .A rhs sem :: prods') subset A P xs (_ , H) | yes refl
@@ -1850,7 +1841,7 @@ the pessimist can conclude that the real hard work will be required as soon as w
 \end{document}
 
 %%% Local Variables:
-%%% mode: latex
+%%% mode: agda
 %%% TeX-master: t
 %%% TeX-command-default: "lagda2pdf"
 %%% End: 
