@@ -515,6 +515,7 @@ while the |Op| constructor additionally takes an index into the list to specify 
 \begin{code}
 module Combinations where
   open Sig
+  open AlmostRegex using (allSplitsPost)
 \end{code}
 %endif
 \begin{code}
@@ -589,6 +590,7 @@ module Stateless where
   open Combinations
   open Sig
   open Spec
+  open AlmostRegex using (allSplitsPost)
 \end{code}
 %endif
 \begin{code}
@@ -742,14 +744,14 @@ Similarly, the correctness proof of |match| will be the same on all cases except
 %if style == newcode
 \begin{code}
   allSplitsSound : ∀ (xs : String) ->
-    wpSpec [[ ⊤ , (λ {(ys , zs) → xs == ys ++ zs})]] ⊑ wpMatch (allSplits (hiddenInstance(∈Tail ∈Head)) xs)
+    (wpSpec [[ ⊤ , (λ {(ys , zs) → xs == ys ++ zs})]]) ⊑ (wpMatch (allSplits (hiddenInstance(∈Tail ∈Head)) xs))
   allSplitsSound Nil        P (fst , snd) = snd _ refl
   allSplitsSound (x :: xs)  P (fst , snd) = snd _ refl ,
     wpToBind (allSplits xs) _ (allSplitsSound xs _ (tt , λ {(ys , zs) H → snd _ (cong (x ::_) H)}))
 \end{code}
 On the other hand, the correctness proof for |match| needs a bit of tweaking to deal with the difference in the recursive steps.
 \begin{code}
-  matchSound : ∀ r,xs -> wpSpec [[ ⊤ , matchSpec r,xs ]] ⊑ wpMatch (match (hiddenInstance(∈Head)) r,xs)
+  matchSound : ∀ r,xs -> (wpSpec [[ ⊤ , matchSpec r,xs ]]) ⊑ wpMatch (match (hiddenInstance(∈Head)) r,xs)
   matchSound (Empty , xs) P (preH , postH) = tt
   matchSound (Epsilon , Nil)       P (preH , postH) = postH _ Epsilon
   matchSound (Epsilon , (_ :: _))  P (preH , postH) = tt
@@ -965,15 +967,16 @@ being structured as a case distinction on the regular expression.
 \end{code}
 %endif
 
-Before we can prove the correctness of |dmatch| in terms of |match|,
-it turns out that we also need to describe |match| itself better.
-The meaning of our goal, to show that |match| is refined by |dmatch|,
-is to prove that the output of |dmatch| is a subset of that of |match|.
-Since |match| makes use of |allSplits|, we first prove
-that |allSplits| returns all possible splittings of a string.
+Before we can prove the correctness of |dmatch| in terms of |match|, it turns
+out that we also need to describe |match| itself better. The meaning of our
+goal, to show that |match| is refined by |dmatch|, is to prove that the output
+of |dmatch| is a subset of that of |match|. Since |match| makes use of
+|allSplits|, we first prove that all splittings of a string |xs| are in the
+output of |allSplits xs|. This following lemma and |allSplitsSound| together
+show that calling |allSplits xs| is equivalent, under the semantics |wpMatch|, to its
+specification |[[ ⊤ , allSplitsPost xs ]]|.
 \begin{code}
-  allSplitsComplete : (xs : String) →
-    (wpMatch (allSplits (hiddenInstance(∈Tail ∈Head)) xs)) ⊑ wpSpec [[ ⊤ , (λ {(ys , zs) → xs == ys ++ zs})]]
+  allSplitsComplete : (xs : String) → (wpMatch (allSplits (hiddenInstance(∈Tail ∈Head)) xs)) ⊑ (wpSpec [[ ⊤ , allSplitsPost xs ]])
 \end{code}
 %if style == newcode
 \begin{code}
@@ -985,8 +988,6 @@ that |allSplits| returns all possible splittings of a string.
 \end{code}
 %endif
 The proof mirrors |allSplits|, performing induction on |xs|.
-% Note that |allSplitsSound| and |allSplitsComplete| together show that |allSplits xs| is equivalent to its specification |[[ ⊤ , λ {(ys , zs) -> xs == ys + zs}]]|,
-% in the sense of the |_≡_| relation.
 
 Using the preceding lemmas, we can prove the partial correctness of |dmatch| by showing it refines |match|:
 % TODO make this wpMatch dmatch ⊑ wpSpec matchSpec ?
