@@ -564,6 +564,12 @@ indicated by the double curly braces |⦃ ⦄| surrounding the arguments.
   call : (Forall(I O es)) ⦃ iRec : Rec I O ∈ es ⦄ -> (i : I) -> Free es (O i)
   call ⦃ iRec ⦄ i = Op iRec i Pure
 \end{code}
+%if style == newcode
+\begin{code}
+  choices : ∀ {es a} ⦃ iND : Nondet ∈ es ⦄ → List (Free es a) → Free es a
+  choices ⦃ iND ⦄ = foldr choice fail
+\end{code}
+%endif
 For convenience of notation, we introduce the |(RecArr _ es _)| notation for general recursion,
 i.e. Kleisli arrows into |Free (Rec _ _ :: es)|.
 \begin{code}
@@ -1325,15 +1331,16 @@ calling each other in mutual recursion:
 \end{code}
 The main function is |fromProds|: given a nonterminal,
 it selects the productions with this nonterminal on the left hand side using |filterLHS|,
-and makes a nondeterministic choice between the productions.
+and makes a nondeterministic choice between them.
 \begin{code}
   filterLHS A Nil = Nil
   filterLHS A (prod lhs rhs sem :: ps) with A ≟n lhs
   ... | yes refl  = prodrhs rhs sem :: filterLHS A ps
   ... | no _      = filterLHS A ps
 
-  fromProds A = foldr (choice (hiddenInstance(∈Tail ∈Head))) (fail (hiddenInstance(∈Tail ∈Head))) (map fromProd (filterLHS A prods))
+  fromProds A = choices (hiddenInstance(∈Tail ∈Head)) (map fromProd (filterLHS A prods))
 \end{code}
+The |choices| operator takes a list of computations and nondeterministically chooses one of them to execute.
 
 The function |fromProd| takes a single production and tries to parse the input string using this production.
 It then uses the semantic function of the production to give the resulting value.
@@ -1488,10 +1495,9 @@ since using an incorrect production rule in the |parseStep| will result in an in
 Thus, we parametrise |filterStep| by a list |prods'| and a proof that it is a sublist of |prods|.
 Again, the proof uses the same distinction as |fromProds| does,
 and uses the |wpToBind| lemma to deal with the |_>>=_| operator.
-% TODO: make ``foldr (choice) (fail) (map ... ...)`` a new definition.
 \begin{code}
     filterStep : ∀ prods' A -> ((Forall(p)) p ∈ prods' -> p ∈ prods) ->
-      (wpSpec [[ (hiddenConst(⊤)) , (parserSpec prods A) ]]) ⊑ (wpFromProd prods (foldr (choice (hiddenInstance(∈Tail ∈Head))) (fail (hiddenInstance(∈Tail ∈Head))) (map (fromProd prods) (filterLHS prods A prods'))))
+      (wpSpec [[ (hiddenConst(⊤)) , (parserSpec prods A) ]]) ⊑ (wpFromProd prods (choices (hiddenInstance(∈Tail ∈Head)) (map (fromProd prods) (filterLHS prods A prods'))))
     filterStep Nil A subset P xs H = tt
     filterStep (prod lhs rhs sem :: prods') A subset P xs H with A ≟n lhs
     filterStep (prod .A rhs sem :: prods') A subset P xs (_ , H) | yes refl
