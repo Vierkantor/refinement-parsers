@@ -160,15 +160,30 @@ literature~\cite{algebraic-operations-and-generic-effects}:
 \end{code}
 In this paper, we will assign \emph{semantics} to effectful programs
 by mapping them to \emph{predicate transformers}.
-Each semantics will be defined as a fold over the free monad, mapping
+Each semantics will be computed by a fold over the free monad, mapping
 some predicate |P : a -> Set| to a predicate on the result of the free
-monad to a predicate of the entire computation of type |Free (eff C R) a -> Set|:
+monad to a predicate of the entire computation of type |Free (eff C R) a -> Set|.
 \begin{code}
   (wp) : (implicit(C : Set)) (implicit(R : C -> Set)) (implicit(a : Set)) ((c : C) -> (R c -> Set) -> Set) ->
     Free (mkSig C R) a -> (a -> Set) -> Set
   (wp alg (Pure x)) P  = P x
   (wp alg (Op c k)) P  = alg c λ x -> (wp (alg) (k x)) P
 \end{code}
+The \emph{predicate transformer} nature of these semantics
+becomes evident when we assume the type of responses |R| does not depend on the command |c : C|.
+The type of |alg : (c : C) → (R c → Set) → Set| then becomes |C → (R → Set) → Set|,
+which is isomorphic to |(R → Set) → (C → Set)|.
+Thus, |alg| has the form of a predicate transformer from postconditions of type
+|R → Set| into preconditions of type |C → Set|.
+% The type of |(wp alg)| under the same isomorphism becomes
+% |(a -> Set) -> (Free e a → Set)|.
+Two considerations cause us to define the types |alg : (c : C) → (R c → Set) → Set|,
+and analogously |(wp alg) : Free (mkSig C R) a → (a → Set) → Set|.
+By having the command as first argument to |alg|, we allow |R| to depend on |C|.
+Moreover, |(wp alg)| computes semantics,
+so it should take a program |S : Free (mkSig C R) a| as its argument
+and return the semantics of |S|, which is then of type |(a → Set) → Set|.
+
 In the case of non-determinism, for example, we may want to require that a given
 predicate |P| holds for all possible results that may be returned:
 %if style == newcode
