@@ -236,5 +236,10 @@
 %format equivStep = ≡-step
 %format hiddenT = ⊤
 %format spec' = spec
+%format (wp a b) = "wp" a b
+%format (wpMatch b) = "wpMatch" b
+%format (wpNondetAll b) = "wpNondetAll" b
+%format (wpS a b) = "wpS" a b
+%format (wpSpec s) = "wpSpec" s
 %endif
 

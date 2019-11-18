@@ -971,16 +971,17 @@ The meaning of our goal, to show that |match| is refined by |dmatch|,
 is to prove that the output of |dmatch| is a subset of that of |match|.
 Since |match| makes use of |allSplits|, we first prove
 that |allSplits| returns all possible splittings of a string.
-% TODO make this wpMatch allSplits ⊑ wpSpec splitSpec ?
 \begin{code}
-  allSplitsComplete : (xs ys zs : String) (P : String × String → Set) →
-    (wpMatch (allSplits (hiddenInstance(∈Tail ∈Head)) xs)) P → (xs == ys ++ zs) → P (ys , zs)
+  allSplitsComplete : (xs : String) →
+    (wpMatch (allSplits (hiddenInstance(∈Tail ∈Head)) xs)) ⊑ wpSpec [[ ⊤ , (λ {(ys , zs) → xs == ys ++ zs})]]
 \end{code}
 %if style == newcode
 \begin{code}
-  allSplitsComplete Nil Nil .Nil P H refl = H
-  allSplitsComplete (x :: xs) Nil .(x :: xs) P H refl = Pair.fst H
-  allSplitsComplete .(x :: ys ++ zs) (x :: ys) zs P H refl = allSplitsComplete (ys ++ zs) ys zs (λ {(ys' , zs') → P ((x :: ys') , zs')}) (wpFromBind (allSplits (ys ++ zs)) _ (Pair.snd H) ) refl
+  allSplitsComplete Nil P H = tt , λ
+    { (Nil , .Nil) refl → H }
+  allSplitsComplete (x :: xs) P H = tt , λ
+    { (Nil , .(x :: xs)) refl → Pair.fst H
+    ; ((.x :: ys) , zs) refl → Pair.snd (allSplitsComplete xs (λ {(ys , zs) → P ((x :: ys) , zs)}) (wpFromBind (allSplits (ys ++ zs)) _ (Pair.snd H))) (ys , zs) refl}
 \end{code}
 %endif
 The proof mirrors |allSplits|, performing induction on |xs|.
@@ -1007,7 +1008,7 @@ Therefore, we omit the proof.
   dmatchSound (Singleton c)  (x :: xs)       P H with x ≟ c
   dmatchSound (Singleton c)  (.c :: Nil)     P H | yes refl with c ≟ c
   dmatchSound (Singleton c)  (.c :: Nil)     P H | yes refl | yes refl = λ {o Epsilon -> H}
-  dmatchSound (Singleton c)  (.c :: Nil)     P H | yes refl | no ¬p = (λ ()) (¬p refl)
+  dmatchSound (Singleton c)  (.c :: Nil)     P H | yes refl | no ¬p = magic (¬p refl)
   dmatchSound (Singleton c)  (.c :: _ :: _)  P H | yes refl = λ o ()
   dmatchSound (Singleton c)  (_ :: _)        P H | no ¬p = λ o ()
   dmatchSound (l · r)        Nil             P H with matchEpsilon l | matchEpsilon r
@@ -1016,18 +1017,20 @@ Therefore, we omit the proof.
   dmatchSound (l · r)        Nil             P H | no ¬pl | yes (mr , pr) = tt
   dmatchSound (l · r)        Nil             P H | no ¬pl | no ¬pr = tt
   dmatchSound (l · r)        (x :: xs)       P (fst , snd) with matchEpsilon l
-  ... | yes (ml , pl) = λ {
-    (Inl (tl , tr)) (OrLeft (Concat {ys = ys} {zs = zs} lH rH)) →
-      allSplitsComplete (x :: xs) (x :: ys) zs
-      (λ { (ys , zs) → wpMatch (call ⦃ ∈Head ⦄ (l , ys) >>= λ y → call ⦃ ∈Head ⦄ (r , zs) >>= λ z → Pure (y , z)) P})
-      (wpFromBind {pts = ptRec matchSpec :: ptAll :: Nil} (allSplits ⦃ ∈Tail ∈Head ⦄ (x :: ys ++ zs)) _ (fst , snd))
-      refl _ (derivativeCorrect l lH) _ rH ;
-    (Inr t) (OrRight h) → fst _ pl _ (derivativeCorrect r h) }
-  ... | no ¬p = λ {(y , z) (Concat {ys = ys} {zs = zs} lH rH) →
-    allSplitsComplete (x :: xs) (x :: ys) zs
-    (λ { (ys , zs) → wpMatch (call ⦃ ∈Head ⦄ (l , ys) >>= λ y → call ⦃ ∈Head ⦄ (r , zs) >>= λ z → Pure (y , z)) P})
-    (wpFromBind {pts = ptRec matchSpec :: ptAll :: Nil} (allSplits ⦃ ∈Tail ∈Head ⦄ (x :: ys ++ zs)) _ (fst , snd))
-    refl _ (derivativeCorrect l lH) _ rH}
+  ... | yes (ml , pl) = λ
+    { (Inl (tl , tr)) (OrLeft (Concat {ys = ys} {zs = zs} lH rH)) →
+      Pair.snd (allSplitsComplete (x :: xs)
+        (λ { (ys , zs) → wpMatch (call ⦃ ∈Head ⦄ (l , ys) >>= λ y → call ⦃ ∈Head ⦄ (r , zs) >>= λ z → Pure (y , z)) P})
+        (wpFromBind {pts = ptRec matchSpec :: ptAll :: Nil} (allSplits ⦃ ∈Tail ∈Head ⦄ (x :: ys ++ zs)) _ (fst , snd))
+      ) ((x :: ys) , zs) refl _ (derivativeCorrect l lH) _ rH
+    ; (Inr t) (OrRight h) →
+      fst _ pl _ (derivativeCorrect r h) }
+  ... | no ¬p = λ {
+    (y , z) (Concat {ys = ys} {zs = zs} lH rH) →
+      Pair.snd (allSplitsComplete (x :: xs)
+        (λ { (ys , zs) → wpMatch (call ⦃ ∈Head ⦄ (l , ys) >>= λ y → call ⦃ ∈Head ⦄ (r , zs) >>= λ z → Pure (y , z)) P})
+        (wpFromBind {pts = ptRec matchSpec :: ptAll :: Nil} (allSplits ⦃ ∈Tail ∈Head ⦄ (x :: ys ++ zs)) _ (fst , snd))
+      ) ((x :: ys) , zs) refl _ (derivativeCorrect l lH) _ rH}
   dmatchSound (l ∣ r)        Nil             P (fst , snd) with matchEpsilon l | matchEpsilon r
   dmatchSound (l ∣ r)        Nil             P (fst , snd) | yes (ml , pl) | yes (mr , pr) = fst ml pl
   dmatchSound (l ∣ r)        Nil             P (fst , snd) | yes (ml , pl) | no ¬pr = fst ml pl
@@ -1444,7 +1447,7 @@ We choose |ptAll| as the semantics of nondeterminism, since we want to ensure al
   wpFromBind : ∀ {a b s es} {pts : PTSs s es} {P} (mx : Free es a) (f : a -> Free es b) ->
     ∀ t -> wpS pts (mx >>= f) P t -> wpS pts mx (λ x t -> wpS pts (f x) P t) t
   wpFromBind {pts = pts} mx f t H = subst id (sym (consequence pts mx f t)) H
-  partialCorrectness prods A P xs H = filterStep prods id A P xs H
+  partialCorrectness prods A P xs H = filterStep prods A id P xs H
     where
     open FromProds gs
 \end{code}
@@ -1488,13 +1491,13 @@ and uses the |wpToBind| lemma to deal with the |_>>=_| operator.
 \begin{code}
     filterStep : ∀ prods' A -> ((Forall(p)) p ∈ prods' -> p ∈ prods) ->
       (wpSpec [[ (hiddenConst(⊤)) , (parserSpec prods A) ]]) ⊑ (wpFromProd prods (foldr (choice (hiddenInstance(∈Tail ∈Head))) (fail (hiddenInstance(∈Tail ∈Head))) (map (fromProd prods) (filterLHS prods A prods'))))
-    filterStep Nil subset A P xs H = tt
-    filterStep (prod lhs rhs sem :: prods') subset A P xs H with A ≟n lhs
-    filterStep (prod .A rhs sem :: prods') subset A P xs (_ , H) | yes refl
+    filterStep Nil A subset P xs H = tt
+    filterStep (prod lhs rhs sem :: prods') A subset P xs H with A ≟n lhs
+    filterStep (prod .A rhs sem :: prods') A subset P xs (_ , H) | yes refl
       = wpToBind (buildParser prods rhs) _ _
       (parseStep A rhs _ xs λ o t' H' → H _ _ (Produce (subset ∈Head) H'))
-      , filterStep prods' (subset ∘ ∈Tail) A P xs (_ , H)
-    ... | no ¬p = filterStep prods' (subset ∘ ∈Tail) A P xs H
+      , filterStep prods' A (subset ∘ ∈Tail) P xs (_ , H)
+    ... | no ¬p = filterStep prods' A (subset ∘ ∈Tail) P xs H
 \end{code}
 
 With these lemmas, |partialCorrectness| just consists of applying |filterStep| to the subset of |prods| consisting of |prods| itself.
@@ -1683,7 +1686,7 @@ If |k| is zero, we have consumed more than |length str| characters of |str|, als
     go A (_ :: _) (Succ k) (s≤s ltK) n cs H' (A' , str') (Left (s≤s lt))
       = acc (go A' str' k (≤-trans lt ltK) bound Nil ≤-refl)
     go A str k ltK Zero cs H' (A' , str') (Right lt cs')
-      = (λ ()) (<⇒≱ (H cs) (≤-trans H' (≤-reflexive (+-identityʳ _))))
+      = magic (<⇒≱ (H cs) (≤-trans H' (≤-reflexive (+-identityʳ _))))
     go A str k ltK (Succ n) cs H' (A' , str') (Right lt c)
       = acc (go A' str' k (≤-trans lt ltK) n (c :: cs) (≤-trans H' (≤-reflexive (+-suc _ _))))
 
