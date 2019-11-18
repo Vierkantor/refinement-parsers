@@ -1818,6 +1818,7 @@ As for partial correctness, we obtain the proof of termination by applying |filt
 
 \section{Discussion}
 
+\subsection{Related work}
 In this paper, we have described a representation of parsers and shown how to perform verification of parsers in this representation.
 We will discuss how our work relates to other parser verifications.
 Our sections on regular expressions have a similar structure to a Functional Pearl by \citet{harper-regex}.
@@ -1841,14 +1842,7 @@ These two coinductive constructions carry proofs of productivity, in the form of
 again mixing syntax and semantics.
 % perhaps also Validating LR(1) Parsers https://link.springer.com/chapter/10.1007/978-3-642-28869-2_20
 
-In conclusion, the two distinguishing features of our work are formality and modularity.
-We could introduce the combination of effects, petrol-driven termination, semantics for state and variant-based termination
-without impacting existing definitions.
-We strictly separate the syntax and semantics of the programs,
-and partial correctness from termination.
-This results in verification proofs that do not need to carry around many goals,
-allowing most of them to consist of unfolding the definition and filling in the obvious terms.
-
+\subsection{Open issues}
 In the process of this verification, we have solved some open issues in the area of predicate transformer semantics and leave others open.
 \citet{pt-semantics-for-effects} mention two avenues of further work that our work makes advances on: the semantics for combinations of effects
 and the verification of non-trivial programs using algebraic effects.
@@ -1856,7 +1850,27 @@ Still, we chose to verify parsers with applying predicate transformers to them i
 so the goal of verifying a practical program remains a step further.
 % Perhaps a translation of ``er valt iets af te dingen aan het idee dat we een praktisch programma verifiëren'' is more apt.
 
-% TODO: discuss further work: (interaction of) handlers, efficiency, more?
+We have described how coproducts allow for combinations of effect syntax and semantics,
+but not how these combinations interact with effect handlers.
+The interaction between different effects means
+applying handlers in a different order can result in different semantics.
+We assign predicate transformer semantics to a combination of effects all at once,
+specifying their interaction explicitly.
+Can we assign semantics to effects such that they interact in a similar way as handlers do?
+
+Another issue that remains is dealing with other representations of the free monad.
+The |Free| datatype could be replaced with more efficient versions to run practical computations~\cite{extensible-effects,freer-monads}.
+We expect that predicate transformer semantics, although arising from a fold on the |Free| monad,
+will generalize without problems to these more advanced representations.
+
+\subsection{Conclusions}
+In conclusion, the two distinguishing features of our work are formality and modularity.
+We could introduce the combination of effects, petrol-driven termination, semantics for state and variant-based termination
+without impacting existing definitions.
+We strictly separate the syntax and semantics of the programs,
+and partial correctness from termination.
+This results in verification proofs that do not need to carry around many goals,
+allowing most of them to consist of unfolding the definition and filling in the obvious terms.
 
 We should also note that the engineering effort expected by \citeauthor{pt-semantics-for-effects} has not been needed for our paper.
 The optimist can conclude that the elegance of our framework caused it to prevent the feared level of complication;
