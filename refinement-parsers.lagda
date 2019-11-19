@@ -494,38 +494,55 @@ proofs.
 \end{code}
 %endif
 \section{General recursion and non-determinism} \label{sec:combinations}
-The matcher we have defined in the previous section is unfinished,
-since it is not able to handle regular expressions that incorporate the Kleene star.
-The fundamental issue is that the Kleene star allows for arbitrarily many distinct matchings in certain cases.
-For example, matching |Epsilon *| with the empty string |""| will allow for repeating the |Epsilon| arbitrarily often, since |Epsilon · (Epsilon *)| is equivalent to both |Epsilon| and |Epsilon *|.
-Thus, we cannot implement |match| on the |_*| operator in the naïve way.
+The matcher we have defined in the previous section is incomplete,
+since it fails to handle regular expressions that use the Kleene star.
+The fundamental issue is that the Kleene star allows for arbitrarily many matches in certain cases, that
+in turn, leads to problems with Agda's termination checker.
+For example, matching |Epsilon *| with the empty string |""| may unfold the Kleene star infinitely often
+without ever terminating.
+As a result, we cannot implement |match| for the Kleene star using recursion directly.
 
-What we will do instead is to deal with the recursion as an effect.
-A recursively defined (dependent) function of type |(i : I) -> O i|
-can instead be given as an element of the type |(i : I) -> Free (Rec I O) (O i)|,
-where |Rec I O| is the signature of \emph{general recursion}~\cite{McBride-totally-free}:
+Instead, we will deal with this (possibly unbounded) recursion by introducing a new \emph{effect}.
+We will represent a recursively defined (dependent) function of type |(i : I) -> O i|
+as an element of the type |(i : I) -> Free (Rec I O) (O i)|.
+Here |Rec I O| is a synonym of the the signature type we saw previously~\cite{McBride-totally-free}:
 \begin{code}
 Rec : (I : Set) (O : I -> Set) -> Sig
 Rec I O = mkSig I O
 \end{code}
+Intuitively, you may want to think of values of type |(i : I) -> Free
+(Rec I O) (O i)| as computing a (finite) call graph for every input |i
+: I|. Instead of recursing directly, the `effects' that this signature
+support require an input |i : I|---corresponding to the argument of
+the recursive call; the continuation abstracts over a value of type |O
+i|, corresponding to the result of a recursive call. Note that the
+functions defined in this style are \emph{not} recursive; instead we
+will need to write handlers to unfold the function definition or prove
+termination separately.
 
-Defining |match| in the |Free (Rec _ _)| monad is not sufficient to implement it fully either,
-since replacing the effect |Nondet| with |Rec| does not allow for nondeterminism anymore.
-While the Kleene star might work, the other parts of |match| do not work anymore.
-We need a way to combine effects.
+We cannot, however, define a |match| function of the form |Free (Rec _
+_)| directly, as our previous definition also used non-determinism. To
+account for both non-determinism and unbounded recursion, we need a
+way to combine effects. Fortunately, free monads are known to be
+closed under coproducts; there is a substantial body of work that
+exploits this to (syntactically) compose separate
+effects~\cite{effect-handlers-in-scope, la-carte}.
 
-We can combine two effects in a straightforward way: given signatures |mkSig C₁ R₁| and |mkSig C₂ R₂|,
-we can define a combined signature by taking the disjoint union of the commands and responses,
-resulting in |mkSig (Either C₁ C₂) [ R₁ , R₂ ]|,
-where |[ R₁ , R₂ ]| is the unique map given by applying |R₁| to values in |C₁| and |R₂| on |C₂|~\cite{effect-handlers-in-scope}.
-If we want to support more effects, we can repeat this process of disjoint unions,
-but this quickly becomes somewhat cumbersome.
-For example, the disjount union construction is associative semantically, but not syntactically.
-If two programs have the same set of effects that is associated differently, we cannot directly compose them.
+% We can combine two effects in a straightforward way: given signatures |mkSig C₁ R₁| and |mkSig C₂ R₂|,
+% we can define a combined signature by taking the disjoint union of the commands and responses,
+% resulting in |mkSig (Either C₁ C₂) [ R₁ , R₂ ]|,
+% where |[ R₁ , R₂ ]| is the unique map given by applying |R₁| to values in |C₁| and |R₂| on |C₂|~\cite{effect-handlers-in-scope}.
+% If we want to support more effects, we can repeat this process of disjoint unions,
+% but this quickly becomes somewhat cumbersome.
+% For example, the disjoint union construction is associative semantically, but not syntactically.
+% If two programs have the same set of effects that is associated differently, we cannot directly compose them.
 
-Instead of building a new effect type, we modify the |Free| monad to take a list of signatures instead of a single signature.
-The |Pure| constructor remains as it is,
-while the |Op| constructor additionally takes an index into the list to specify which effect is invoked.
+Rather than restrict ourselves to the binary composition using
+coproducts, we modify the |Free| monad to take a \emph{list} of
+signatures as its argument, taking the coproduct of the elements of
+the list as its signature functor.  The |Pure| constructor remains as
+unchanged; while the |Op| constructor additionally takes an index into the
+list to specify the effect that is invoked.
 %if style == newcode
 \begin{code}
 module Combinations where
@@ -540,13 +557,11 @@ module Combinations where
 \end{code}
 By using a list of effects instead of allowing arbitrary disjoint unions,
 we have effectively chosen that the disjoint unions canonically associate to the right.
-Since the disjoint union is also commutative,
-it would be cleaner to have the collection of effects be unordered as well.
-Unfortunately, Agda does not provide a multiset type that is easy to work with.
-
-We choose to use the same names and almost the same syntax for this new definition of |Free|,
-since all definitions that use the old version can be ported over with almost no change.
-Thus, we will not repeat definitions such as |_>>=_| and |consequence| for the new |Free| type.
+% Since the disjoint union is also commutative,
+% it would be cleaner to have the collection of effects be unordered as well.
+% Unfortunately, working with such multisets in Agda is  type that is easy to work with.
+We choose to use the same names and (almost) the same syntax for this new definition of |Free|,
+since all the definitions that we have seen previously can be readily adapted to work with this data type instead.
 %if style == newcode
 \begin{code}
   _>>=_ : ∀ {a b es} -> Free es a -> (a -> Free es b) -> Free es b
@@ -567,9 +582,12 @@ Thus, we will not repeat definitions such as |_>>=_| and |consequence| for the n
 \end{code}
 %endif
 
-Most of this bookkeeping can be inferred by Agda's typeclass inference,
-so we make the indices instance arguments,
-indicated by the double curly braces |⦃ ⦄| surrounding the arguments.
+Most of this bookkeeping involved with different effects can be inferred using Agda's \emph{instance arguments}.
+%\todo{citation devriese ICFP geloof ik...}
+Instance arguments, marked using the double curly braces |⦃ ^^ ⦄|, are
+automatically filled in by Agda, provided a unique value of the
+required type can be found. For example, we can define the generic
+effects that we saw previously as follows:
 \begin{code}
   fail : (Forall(a es)) ⦃ iND : Nondet ∈ es ⦄ -> Free es a
   fail ⦃ iND ⦄ = Op iND Fail λ ()
@@ -579,6 +597,9 @@ indicated by the double curly braces |⦃ ⦄| surrounding the arguments.
   call : (Forall(I O es)) ⦃ iRec : Rec I O ∈ es ⦄ -> (i : I) -> Free es (O i)
   call ⦃ iRec ⦄ i = Op iRec i Pure
 \end{code}
+These now operate over any free monad with effects given by |es|,
+provided we can show that the list |es| contains the |NonDet| and
+|Rec| effects respectively.
 %if style == newcode
 \begin{code}
   choices : ∀ {es a} ⦃ iND : Nondet ∈ es ⦄ → List (Free es a) → Free es a
@@ -603,8 +624,8 @@ instance
 
 With the syntax for combinations of effects defined, let us turn to semantics.
 Since the weakest precondition predicate transformer for a single effect is given as a fold
-over the effect's predicate transformer,
-the semantics for a combination of effects can be given as a fold over a (dependent) list of predicate transformers.
+over the effect's signature,
+the semantics for a combination of effects can be given by a list of such semantics.
 %if style == newcode
 \begin{code}
 module Stateless where
@@ -626,19 +647,20 @@ module Stateless where
     _::_ : (Forall(e es)) PT e -> PTs es -> PTs (e :: es)
 \end{code}
 The record type |PT| not only contains a predicate transformer |pt|,
-but also a proof that |pt| is monotone in its predicate.
-The requirement of monotonicity is needed to prove the lemma |terminates-fmap| we introduce later,
-and makes intuitive sense: if the precondition holds for a certain postcondition,
-a weaker postcondition should also have its precondition hold.
+but also a proof that this predicate transformer is
+\emph{monotone}. Several lemmas throughout this paper, such as the
+|terminates-fmap| lemma below, rely on the monotonicity of the
+underlying predicate transformers.
+
+
 
 Given a such a list of predicate transformers,
-defining the semantics of an effectful program is a straightforward generalization of the previously defined semantics |wp|.
+defining the semantics of an effectful program is a straightforward generalization of the previously defined semantics.
 The |Pure| case is identical, and in the |Op| case we can apply the predicate transformer returned by the |lookupPT| helper function.
 \begin{code}
-  lookupPT : (Forall(C R es)) (pts : PTs es) (i : mkSig C R ∈ es) ->
-    (c : C) -> (R c -> Set) -> Set
-  lookupPT (pt :: pts) ∈Head = PT.pt pt
-  lookupPT (pt :: pts) (∈Tail i) = lookupPT pts i
+  lookupPT : (Forall(C R es)) (pts : PTs es) (i : mkSig C R ∈ es) -> (c : C) -> (R c -> Set) -> Set
+  lookupPT (pt :: pts)  ∈Head      = PT.pt pt
+  lookupPT (pt :: pts)  (∈Tail i)  = lookupPT pts i
 \end{code}
 %if style == newcode
 \begin{code}
@@ -648,32 +670,40 @@ The |Pure| case is identical, and in the |Op| case we can apply the predicate tr
 \end{code}
 %endif
 This results in the following definition of the semantics for combinations of effects.
+%TODO hier ziet wp er een beetje raar uit in de .pdf [[.]] ipv [[_]]...
 \begin{code}
   (wp) : (Forall(a es)) (pts : PTs es) -> Free es a -> (a -> Set) -> Set
-  (wp pts (Pure x)) P = P x
-  (wp pts (Op i c k)) P = lookupPT pts i c λ x -> (wp pts (k x)) P
+  (wp pts (Pure x))    P  = P x
+  (wp pts (Op i c k))  P  = lookupPT pts i c λ x -> (wp pts (k x)) P
 \end{code}
 
-The effects we are planning to use for |match| are a combination of nondeterminism and general recursion.
-We re-use the |ptAll| semantics of nondeterminism, packaging them in a |PT| record.
-However, it is not as easy to give a predicate transformer for general recursion,
-since the intended semantics of a recursive call depend
-on the function that is being called, i.e. the function that is being defined.
-
-As long as we have a specification of a function of type |(i : I) -> O i|,
-for example in terms of a relation of type |(i : I) -> O i -> Set|,
-we are able to define a predicate transformer:
+The effects we are planning to use for our |match| functian are a
+combination of nondeterminism and general recursion.  Although we can
+reuse the |ptAll| semantics of nondeterminism, we have not yet given
+the semantics for recursion.  However, it is not as easy to give a
+predicate transformer semantics for recursion in general, since the
+intended semantics of a recursive call depend on the function that is
+being defined. Instead, to give semantics to a recursive function, we
+assume that we have been provided with a relation of the type |(i : I)
+-> O i -> Set|, reminiscent of a loop invariant in an imperative
+program. The semantics then establishes whether or not the recursive
+function adheres to this invariant or not:
 \begin{code}
   ptRec : (Forall(I O)) ((i : I) -> O i -> Set) -> PT (Rec I O)
-  PT.pt (ptRec R) i P = ∀ o -> R i o -> P o
-  PT.mono (ptRec R) c P P' imp asm o h = imp _ (asm _ h)
+  PT.pt    (ptRec R) i P                 = ∀ o -> R i o -> P o
+  PT.mono  (ptRec R) c P P' imp asm o h  = imp _ (asm _ h)
 \end{code}
-In the case of verifying the |match| function, the |Match| relation will play the role of |R|.
-If we use |ptRec R| as a predicate transformer to check that a recursive function satisfies the relation |R|,
-then we are proving \emph{partial correctness}, since we assume each recursive call succesfully returns
-a correct value according to the relation |R|.
+%TODO Mono case weglaten?
+As we shall see shortly, when revisiting the |match| function, the
+|Match| relation defined previously will fulfill the role of this
+`invariant.'
 
 \section{Recursively parsing every regular expression} \label{sec:regex-rec}
+
+% In the case of verifying the |match| function, the |Match| relation will play the role of |R|.
+% If we use |ptRec R| as a predicate transformer to check that a recursive function satisfies the relation |R|,
+% then we are proving \emph{partial correctness}, since we assume each recursive call succesfully returns
+% a correct value according to the relation |R|.
 
 To deal with the Kleene star, we rewrite |match| as a generally recursive function using a combination of effects.
 Since |match| makes use of |allSplits|, we also rewrite that function to use a combination of effects.
@@ -1880,9 +1910,7 @@ the pessimist can conclude that the real hard work will be required as soon as w
 \end{document}
 
 %%% Local Variables:
-%%% mode: agda
+%%% mode: latex
 %%% TeX-master: t
 %%% TeX-command-default: "lagda2pdf"
-%%% End: 
-
-
+%%% End:
