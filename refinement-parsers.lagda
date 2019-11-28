@@ -284,7 +284,7 @@ denoted by the Kleene star (|_*|).
 
 What should our regular expression matcher return?  A Boolean value is
 not particularly informative; yet we also choose not to provide an
-intrinsically correct definition, instead performing extrensic
+intrinsically correct definition, instead performing extrinsic
 verification using our predicate transformer semantics. The |tree|
 data type below, captures a potential parse tree associated with a
 given regular expression:
@@ -383,7 +383,7 @@ module AlmostRegex where
   \label{fig:match}
 \end{figure}  
 Finally, we cannot yet handle the case for the Kleene star.  We could
-attempt to mimick the case for concatenation, attempting to match |r ·
+attempt to mimic the case for concatenation, attempting to match |r ·
 (r ⋆)|. This definition, however, is rejected by Agda as it is not
 structurally recursive. For now, however, we choose to simply fail on
 all such regular expressions.
@@ -677,7 +677,7 @@ This results in the following definition of the semantics for combinations of ef
   (wp pts (Op i c k))  P  = lookupPT pts i c λ x -> (wp pts (k x)) P
 \end{code}
 
-The effects we are planning to use for our |match| functian are a
+The effects we are planning to use for our |match| function are a
 combination of nondeterminism and general recursion.  Although we can
 reuse the |ptAll| semantics of nondeterminism, we have not yet given
 the semantics for recursion.  However, it is not as easy to give a
@@ -702,7 +702,7 @@ As we shall see shortly, when revisiting the |match| function, the
 
 % In the case of verifying the |match| function, the |Match| relation will play the role of |R|.
 % If we use |ptRec R| as a predicate transformer to check that a recursive function satisfies the relation |R|,
-% then we are proving \emph{partial correctness}, since we assume each recursive call succesfully returns
+% then we are proving \emph{partial correctness}, since we assume each recursive call successfully returns
 % a correct value according to the relation |R|.
 
 To deal with the Kleene star, we rewrite |match| as a generally recursive function using a combination of effects.
@@ -1278,7 +1278,7 @@ while remaining tractable in parsing is that of the \emph{context-free language}
 The expressiveness of context-free languages is enough to cover most programming languages used in practice~\cite{dragon-book}.
 We will represent context-free languages in Agda by giving a grammar in the style of \citet{dependent-grammar},
 in a similar way as we represent a regular language using an element of the |Regex| type.
-Following their development, we parametrize our definitions over a collection of nonterminal symbols.
+Following their development, we parametrize our definitions over a collection of non-terminal symbols.
 %if style == newcode
 \begin{code}
 open import Relation.Binary
@@ -1292,8 +1292,8 @@ record GrammarSymbols : Set where
     _≟n_ : Decidable {A = Nonterm} _==_
 \end{code}
 The elements of the type |Char| are the \emph{terminal} symbols.
-The elements of the type |Nonterm| are the \emph{nonterminal} symbols, representing the language constructs.
-As for |Char|, we also need to be able to decide the equality of nonterminals.
+The elements of the type |Nonterm| are the \emph{non-terminal} symbols, representing the language constructs.
+As for |Char|, we also need to be able to decide the equality of non-terminals.
 The (disjoint) union of |Char| and |Nonterm| gives all the symbols that we can use in defining the grammar.
 %if style == newcode
 \begin{code}
@@ -1306,12 +1306,12 @@ module Grammar (gs : GrammarSymbols) where
   Symbol = Either Char Nonterm
   Symbols = List Symbol
 \end{code}
-For each nonterminal |A|, our goal is to parse a string into a value of type |⟦ A ⟧|,
+For each non-terminal |A|, our goal is to parse a string into a value of type |⟦ A ⟧|,
 based on a set of production rules.
-A production rule $A \to xs$ gives a way to expand the nonterminal |A| into a list of symbols |xs|,
+A production rule $A \to xs$ gives a way to expand the non-terminal |A| into a list of symbols |xs|,
 such that successfully matching each symbol of |xs| with parts of a string
 gives a match of the string with |A|.
-Since matching a nonterminal symbol |B| with a (part of a) string results in a value of type |⟦ B ⟧|,
+Since matching a non-terminal symbol |B| with a (part of a) string results in a value of type |⟦ B ⟧|,
 a production rule for |A| is associated with a \emph{semantic function} that takes all values arising from submatches
 and returns a value of type |⟦ A ⟧|,
 as expressed by the following type:
@@ -1374,8 +1374,8 @@ calling each other in mutual recursion:
   buildParser  : (Forall(A)) (xs : Symbols) -> FreeParser (⟦ xs ∥ A ⟧ -> ⟦ A ⟧)
   exact        : (Forall(a)) a -> Char -> FreeParser a
 \end{code}
-The main function is |fromProds|: given a nonterminal,
-it selects the productions with this nonterminal on the left hand side using |filterLHS|,
+The main function is |fromProds|: given a non-terminal,
+it selects the productions with this non-terminal on the left hand side using |filterLHS|,
 and makes a nondeterministic choice between them.
 \begin{code}
   filterLHS A Nil = Nil
@@ -1393,7 +1393,7 @@ It then uses the semantic function of the production to give the resulting value
   fromProd (prodrhs rhs sem) = buildParser rhs >>= λ f → Pure (f sem)
 \end{code}
 The function |buildParser| iterates over the |Symbols|, calling |exact| for each literal character symbol,
-and making a recursive |call| to |fromProds| for each nonterminal symbol.
+and making a recursive |call| to |fromProds| for each non-terminal symbol.
 \begin{code}
   buildParser Nil = Pure id
   buildParser (Inl x  :: xs) = exact tt x >>= λ _ -> buildParser xs
@@ -1413,10 +1413,10 @@ Partial correctness of the parser is relatively simple to show,
 as soon as we have a specification.
 Since we want to prove that |fromProds| correctly parses any given context free grammar given as an element of |Prods|,
 the specification consists of a relation between many sets:
-the production rules, an input string, a nonterminal, the output of the parser, and the remaining unparsed string.
+the production rules, an input string, a non-terminal, the output of the parser, and the remaining unparsed string.
 Due to the many arguments, the notation is unfortunately somewhat unwieldy.
 To make it a bit easier to read, we define two relations in mutual recursion,
-one for all productions of a nonterminal,
+one for all productions of a non-terminal,
 and for matching a string with a single production rule.
 %if style == newcode
 \begin{code}
@@ -1537,7 +1537,7 @@ But we must be careful that the productions that are used in the |parseStep| are
 not the sublist |prods'| used in the induction step.
 Additionally, we must also make sure that |prods'| is indeed a sublist,
 since using an incorrect production rule in the |parseStep| will result in an invalid result.
-Thus, we parametrise |filterStep| by a list |prods'| and a proof that it is a sublist of |prods|.
+Thus, we parametrize |filterStep| by a list |prods'| and a proof that it is a sublist of |prods|.
 Again, the proof uses the same distinction as |fromProds| does,
 and uses the |wpToBind| lemma to deal with the |_>>=_| operator.
 \begin{code}
@@ -1556,7 +1556,7 @@ With these lemmas, |partialCorrectness| just consists of applying |filterStep| t
 
 \section{Termination of the parser} \label{sec:fromProds-terminates}
 To show termination we need a somewhat more subtle argument:
-since we are able to call the same nonterminal repeatedly,
+since we are able to call the same non-terminal repeatedly,
 termination cannot be shown simply by inspecting each alternative in the definition.
 Consider the grammar given by $E \rightarrow a E; E \rightarrow b$,
 where we see that the string that matches $E$ in the recursive case is shorter than the original string,
@@ -1569,18 +1569,18 @@ with the most pathological case being those of the form $E \to E$.
 The issues do not only occur in edge cases: the grammar $E \to E + E; E \to 1$ representing very simple expressions
 will already result in non-termination for |fromProds|
 as it will go in recursion on the first non-terminal without advancing the input string.
-Since the position in the string and current nonterminal together fully determine the state of |fromParsers|,
+Since the position in the string and current non-terminal together fully determine the state of |fromParsers|,
 it will not terminate.
 We need to ensure that the grammars passed to the parser do not allow for such loops.
 
 Intuitively, the condition on the grammars should be that they are not \emph{left-recursive},
-since in that case, the parser should always advance its position in the string before it encounters the same nonterminal.
+since in that case, the parser should always advance its position in the string before it encounters the same non-terminal.
 This means that the number of recursive calls to |fromProds| is bounded
-by the length of the string times the number of different nonterminals occurring in the production rules.
+by the length of the string times the number of different non-terminals occurring in the production rules.
 The type we will use to describe the predicate ``there is no left recursion'' is constructively somewhat stronger:
 we define a left-recursion chain from $A$ to $B$ to be
-a sequence of nonterminals $A, \dots, A_i, A_{i+1}, \dots, B$,
-such that for each adjacent pair $A_i, A_{i+1}$ in the chain, there is a production of the form $A_{i+1} \to B_1 B_2 \dots B_n A_i \dots$, where $B_1 \dots B_n$ are all nonterminals.
+a sequence of non-terminals $A, \dots, A_i, A_{i+1}, \dots, B$,
+such that for each adjacent pair $A_i, A_{i+1}$ in the chain, there is a production of the form $A_{i+1} \to B_1 B_2 \dots B_n A_i \dots$, where $B_1 \dots B_n$ are all non-terminals.
 In other words, we can advance the parser to $A$ starting in $B$ without consuming a character.
 Disallowing (unbounded) left recursion is not a limitation for our parsers:
 \citet{dependent-grammar} have shown that the \emph{left-corner transform}
@@ -1712,11 +1712,11 @@ We assume that the length of recursion is bounded by |bound : Nat|.
   Termination._≺_ (fromProdsTerminates prods bound H) = RecOrder prods
 \end{code}
 To show that the relation |RecOrder| is well-founded,
-we need to show that there is no infinite descending chain starting from some nonterminal |A| and string |str|.
+we need to show that there is no infinite descending chain starting from some non-terminal |A| and string |str|.
 The proof is based on iteration on two natural numbers |n| and |k|,
 which form an upper bound on the number of allowed left-recursive calls in sequence and unconsumed characters in the string respectively.
 Note that the number |bound| is an upper bound for |n| and the length of the input string is an upper bound for |k|.
-Since each nonterminal in the production will decrease |n| and each terminal will decrease |k|,
+Since each non-terminal in the production will decrease |n| and each terminal will decrease |k|,
 we eventually reach the base case |0| for either.
 If |n| is zero, we have made more than |bound| left-recursive calls, contradicting the assumption that we have bounded left recursion.
 If |k| is zero, we have consumed more than |length str| characters of |str|, also a contradiction.
@@ -1808,10 +1808,10 @@ This means we can repeatedly use the |Left| constructor of |RecOrder| to show th
         (parseStepAdv A xs str str'' (≤-trans (s≤s (consumeString str' str'' B o H)) lt))
 \end{code}
 Here, the lemma |variant-fmap| states that the variant holds for a program of the form |S >>= (Pure ∘ f)| if it does for |S|, since the |Pure| part does not make any recursive calls;
-the lemma |consumeString str' str'' B| states that the string |str''| is shorter than |str'| if |str''| is the left-over string after matching |str''| with nonterminal |B|.
+the lemma |consumeString str' str'' B| states that the string |str''| is shorter than |str'| if |str''| is the left-over string after matching |str''| with non-terminal |B|.
 %endif
 
-In the |parseStepRec|, we deal with the situation that the parser has only encountered nonterminals in the current production.
+In the |parseStepRec|, we deal with the situation that the parser has only encountered non-terminals in the current production.
 This means that we can use the |Right| constructor of |RecOrder| to show the variant holds until we consume a character,
 after which we call |parseStepAdv| to finish the proof.
 %if style == newcode
@@ -1829,7 +1829,7 @@ after which we call |parseStepAdv| to finish the proof.
         (ys ++ (B :: Nil)) (nextNonterm i))
 \end{code}
 Apart from the previous lemmas, we make use of |nextNonterm i|,
-which states that the current production starts with the nonterminals |ys ++ (B :: Nil)|.
+which states that the current production starts with the non-terminals |ys ++ (B :: Nil)|.
 %endif
 
 The lemma |filterStep| shows that the variant holds on all subsets of the production rules,
