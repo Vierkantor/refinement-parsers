@@ -214,6 +214,7 @@
 %format (wpMatch (b)) = "\llbracket" b "\rrbracket_{\text{match}}"
 %format (wpSpec [[ pre , post ]]) = "\llbracket" pre "," post "\rrbracket_{\text{spec}}"
 %format (wpFromProd (a) (b)) = "\llbracket" b "\rrbracket_{\text{fromProd}}\ " a
+%format Set₁ = Set
 %else
 %format (Forall (a)) = "forall { " a " } -> "
 %format (Exists (a) (b) (c)) = "Sigma " (b) " \ " a " -> " (c)

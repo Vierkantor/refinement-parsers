@@ -4,7 +4,7 @@ open import Level
 postulate
   undefined : ∀ {a : Set} -> a
 
-const : {l : Level} {a b : Set l} -> a -> b -> a
+const : {ℓ₁ ℓ₂ : Level} {a : Set ℓ₁} {b : Set ℓ₂} -> a -> b -> a
 const x _ = x
 
 id : {l : Level} {a : Set l} -> a -> a
@@ -271,7 +271,7 @@ Cons = _::_
 [_] : ∀ {a : Set} -> a -> List a
 [ x ] = Cons x Nil
 
-foldr : {a b : Set} -> (a -> b -> b) -> b -> List a -> b
+foldr : ∀ {ℓ₁ ℓ₂} {a : Set ℓ₁} {b : Set ℓ₂} -> (a -> b -> b) -> b -> List a -> b
 foldr f e Nil = e
 foldr f e (x :: xs) = f x (foldr f e xs)
 
@@ -293,7 +293,7 @@ when-++-is-nil (y :: ys) zs ()
 ++-assoc Nil ys zs = refl
 ++-assoc (x :: xs) ys zs = cong (Cons x) (++-assoc xs ys zs)
 
-map : {a b : Set} -> (a -> b) -> List a -> List b
+map : ∀ {ℓ₁ ℓ₂} {a : Set ℓ₁} {b : Set ℓ₂} -> (a -> b) -> List a -> List b
 map f Nil = Nil
 map f (x :: xs) = Cons (f x) (map f xs)
 
@@ -318,7 +318,7 @@ all : {a : Set} -> (P : a -> Bool) -> List a -> Set
 all P Nil = ⊤
 all P (x :: xs) = Pair (So (P x)) (all P xs)
 
-data _∈_ {a : Set} : a -> List a -> Set where
+data _∈_ {ℓ} {a : Set ℓ} : a -> List a -> Set ℓ where
   ∈Head : ∀ {x xs} -> x ∈ Cons x xs
   ∈Tail : ∀ {x x' xs} -> x ∈ xs -> x ∈ Cons x' xs
 

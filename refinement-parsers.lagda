@@ -10,12 +10,11 @@
 
 %if style == newcode
 \begin{code}
-{-# OPTIONS --type-in-type #-}
 open import Prelude
 
 open import Axiom.Extensionality.Propositional
 open import Level
-postulate extensionality : Extensionality zero zero
+postulate extensionality : ∀ {l₁ l₂} -> Extensionality l₁ l₂
 
 _⊆_ : {a : Set} -> (P Q : a -> Set) -> Set
 P ⊆ Q = ∀ x -> P x -> Q x
@@ -100,7 +99,7 @@ effectful operations. In this paper, we will model the by taking the
 free monad over a given signature, describing certain
 operations. The type of such a signature is defined as follows:
 \begin{code}
-record Sig : Set where
+record Sig : Set₁ where
   constructor mkSig
   field
     C : Set
@@ -215,7 +214,7 @@ Throughout this paper, we will consider specifications consisting of a
 pre- and postcondition:
 \begin{code}
 module Spec where
-  record Spec (a : Set) : Set where
+  record Spec (a : Set) : Set₁ where
     constructor [[_,_]]
     field
       pre : Set
@@ -234,7 +233,7 @@ postcondition |post| should imply the postcondition |P|.
 
 Finally, we use the \emph{refinement relation} to compare programs and specifications:
 \begin{code}
-  _⊑_ : (Forall(a : Set)) (pt1 pt2 : (a -> Set) -> Set) -> Set
+  _⊑_ : (Forall(a : Set)) (pt1 pt2 : (a -> Set) -> Set) -> Set₁
   pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
 \end{code}
 Together with the predicate transformer semantics we have defined
@@ -551,7 +550,7 @@ module Combinations where
 \end{code}
 %endif
 \begin{code}
-  data Free (es : List Sig) (a : Set) : Set where
+  data Free (es : List Sig) (a : Set) : Set₁ where
     Pure : a -> Free es a
     Op : (hidden(e : Sig)) (i : e ∈ es) (c : C e) (k : R e c -> Free es a) -> Free es a
 \end{code}
@@ -609,15 +608,15 @@ provided we can show that the list |es| contains the |NonDet| and
 For convenience of notation, we introduce the |(RecArr _ es _)| notation for general recursion,
 i.e. Kleisli arrows into |Free (Rec _ _ :: es)|.
 \begin{code}
-  RecArr' : (C : Set) (es : List Sig) (R : C → Set) → Set
+  RecArr' : (C : Set) (es : List Sig) (R : C → Set) → Set₁
   (RecArr C es R) = (c : C) -> Free (mkSig C R :: es) (R c)
 \end{code}
 %if style == newcode
 \begin{code}
 instance
-  inHead : ∀ {a} {x : a} {xs : List a} → x ∈ (x :: xs)
+  inHead : ∀ {l} {a : Set l} {x : a} {xs : List a} → x ∈ (x :: xs)
   inHead = ∈Head
-  inTail : ∀ {a} {x x' : a} {xs : List a} → ⦃ i : x ∈ xs ⦄ → x ∈ (x' :: xs)
+  inTail : ∀ {l} {a : Set l} {x x' : a} {xs : List a} → ⦃ i : x ∈ xs ⦄ → x ∈ (x' :: xs)
   inTail ⦃ i ⦄ = ∈Tail i
 \end{code}
 %endif
@@ -636,13 +635,13 @@ module Stateless where
 \end{code}
 %endif
 \begin{code}
-  record PT (e : Sig) : Set where
+  record PT (e : Sig) : Set₁ where
     constructor mkPT
     field
       pt : (c : C e) → (R e c → Set) → Set
       mono : ∀ c P P' → P ⊆ P' → pt c P → pt c P'
 
-  data PTs : List Sig -> Set where
+  data PTs : List Sig -> Set₁ where
     Nil : PTs Nil
     _::_ : (Forall(e es)) PT e -> PTs es -> PTs (e :: es)
 \end{code}
@@ -1200,7 +1199,7 @@ We can incorporate a mutable state of type |s| in predicate transformer semantic
 by replacing the propositions in |Set| with predicates over the state in |s → Set|.
 We define the resulting type of stateful predicate transformers for an effect with signature |e| to be |PTS s e|, as follows:
 \begin{code}
-  record PTS (s : Set) (e : Sig) : Set where
+  record PTS (s : Set) (e : Sig) : Set₁ where
     constructor mkPTS
     field
       pt : (c : C e) → (R e c → s → Set) → s → Set
@@ -1208,7 +1207,7 @@ We define the resulting type of stateful predicate transformers for an effect wi
 \end{code}
 %if style == newcode
 \begin{code}
-  data PTSs (s : Set) : List Sig -> Set where
+  data PTSs (s : Set) : List Sig -> Set₁ where
     Nil : PTSs s Nil
     _::_ : ∀ {e es} -> PTS s e -> PTSs s es -> PTSs s (e :: es)
 
@@ -1262,7 +1261,7 @@ With the predicate transformer semantics of |Parser|,
 we can define the language accepted by a parser in the |Free| monad as a predicate over strings:
 a string |xs| is in the language of a parser |S| if the postcondition ``all characters have been consumed'' is satisfied.
 \begin{code}
-  empty? : (Forall(a)) List a -> Set
+  empty? : (Forall(l)) (implicit(a : Set l)) List a -> Set
   empty? Nil = ⊤
   empty? (_ :: _) = ⊥
 
@@ -1285,7 +1284,7 @@ open import Relation.Binary
 \end{code}
 %endif
 \begin{code}
-record GrammarSymbols : Set where
+record GrammarSymbols : Set₁ where
   field
     Nonterm : Set
     ⟦_⟧ : Nonterm -> Set
@@ -1451,7 +1450,7 @@ module Correctness (gs : GrammarSymbols) where
   PTS.pt (ptRec R) i P s = ∀ o s' -> R i s o s' -> P o s'
   PTS.mono (ptRec R) c P Q imp t asm o t' h = imp _ _ (asm _ _ h)
 
-  record StateSpec (s a : Set) : Set where
+  record StateSpec (s a : Set) : Set₁ where
     constructor [[_,_]]
     field
       pre : s -> Set
@@ -1460,7 +1459,7 @@ module Correctness (gs : GrammarSymbols) where
   wpSpec : {s a : Set} -> StateSpec s a -> (a -> s -> Set) -> s -> Set
   wpSpec [[ pre , post ]] P t = pre t ∧ (∀ o t' -> post t o t' -> P o t')
 
-  _⊑_ : {s a : Set} (pt1 pt2 : (a -> s -> Set) -> s -> Set) -> Set
+  _⊑_ : {s a : Set} (pt1 pt2 : (a -> s -> Set) -> s -> Set) -> Set₁
   pt1 ⊑ pt2 = ∀ P t -> pt1 P t -> pt2 P t
 \end{code}
 %endif
@@ -1683,7 +1682,7 @@ since we do not yet know whether |f| terminates.
 Using |variant|, we can define another termination condition on |f|:
 there is a well-founded variant for |f|.
 \begin{code}
-  record Termination (hidden(s es C R)) (pts : PTSs s (mkSig C R :: es)) (f : (RecArr C es R)) : Set where
+  record Termination (hidden(s es C R)) (pts : PTSs s (mkSig C R :: es)) (f : (RecArr C es R)) : Set₁ where
     field
       _≺_ : (C × s) → (C × s) → Set
       w-f : ∀ c t → Acc _≺_ (c , t)
