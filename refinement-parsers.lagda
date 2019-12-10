@@ -1962,10 +1962,10 @@ As for partial correctness, we obtain the proof of termination by applying |filt
 \subsection{Related work}
 In this paper, we have described a representation of parsers and shown how to perform verification of parsers in this representation.
 We will discuss how our work relates to other parser verifications.
-Our sections on regular expressions have a similar structure to a Functional Pearl by \citet{harper-regex}.
+The main body, on regular expressions have a similar structure to a Functional Pearl by \citet{harper-regex}.
 The main difference is that our work is based on formal verification using Agda,
 while \citeauthor{harper-regex} uses manual and informal reasoning.
-The sections on context-free grammars could be compared to work by \citet{total-parser-combinators, firsov-certification-context-free-grammars}.
+The appendices on context-free grammars could be compared to work by \citet{total-parser-combinators, firsov-certification-context-free-grammars}.
 Here the difference, apart from a different parsing algorithm, can be found in how (non)termination is dealt with.
 We opt for a strong separation of syntax and semantics,
 using the |Rec| effect to give the syntax of programs regardless of termination,
@@ -2021,6 +2021,9 @@ The optimist can conclude that the elegance of our framework caused it to preven
 the pessimist can conclude that the real hard work will be required as soon as we encounter a real-world application.
 
 \printbibliography
+
+%TODO: appendices
+
 \end{document}
 
 %%% Local Variables:
