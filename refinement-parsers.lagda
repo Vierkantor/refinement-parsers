@@ -34,7 +34,7 @@ P ⊆ Q = ∀ x -> P x -> Q x
     \and
     Wouter Swierstra
   \institute{Utrecht University}
-  }    
+  }
 %\email{\{t.baanen@@vu.nl,w.s.swierstra@@uu.nl\}}}
 %
 \maketitle              % typeset the header of the contribution
@@ -76,19 +76,44 @@ decreases, conflating termination and correctness.
 In particular, this paper makes the following novel contributions:
 \begin{itemize}
 \item The non-recursive fragment of regular expressions can be correctly parsed
-  using non-determinism (Section \ref{sec:regex-nondet});
-  by combining non-determinism with general recursion (Section \ref{sec:combinations}),
+  using non-determinism (Section \ref{sec:regex-nondet}).
+\item By combining non-determinism with general recursion (Section \ref{sec:combinations}),
   support for the Kleene star can be added without compromising our previous definitions
-  (Section \ref{sec:regex-rec}). Although the resulting parser is not guaranteed to terminate,
-  it is \emph{refined} by another implementation using Brzozowski derivatives that does terminate
-  (Section \ref{sec:dmatch}).
-  
+  (Section \ref{sec:regex-rec}).
+\item Although the resulting parser is not guaranteed to terminate,
+  we can define another implementation using Brzozowski derivatives (Section \ref{sec:dmatch}),
+  introducing an extra effect to our combinations and its handler in the process.
+\item Finally, we show that the derivative-based implementation terminates
+  and \emph{refines} the original parser (Section \ref{sec:dmatch-correct}).
+
+\iffalse
 \item Next, we show how this approach may be extended to handle
   context-free languages. To do so, we show how to write parsers using
   algebraic effects (Section \ref{sec:parser}), and map grammars to parsers (Section
   \ref{sec:fromProductions}). Once again, we can cleanly separate the proofs of partial
   correctness (Section \ref{sec:partialCorrectness}) and termination (Section \ref{sec:fromProds-terminates}).
+\fi
 \end{itemize}
+
+The structure of our article is similar to a Functional Pearl by \citet{harper-regex},
+which also uses the parsing of regular languages as an example of principles of functional software development.
+Starting out with defining regular expressions as a data type and the language associated with each expression as an inductive relation,
+both use the relation to implement essentially the same |match| function, which does not terminate.
+In both, the partial correctness proof of |match| uses a specification expressed as a postcondition,
+based on the inductive relation representing the language of a given regular expression.
+Where we use nondeterminism to handle the concatenation operator,
+\citeauthor{harper-regex} uses a continuation-passing parser for control flow.
+Since the continuations take the unparsed remainder of the string,
+they correspond almost directly to the |Parser| effect of the following section.
+Another main difference between our implementation and \citeauthor{harper-regex}'s
+is in the way the non-termination of |match| is resolved.
+\citeauthor{harper-regex} uses the derivative operator to rewrite the expression in a standard form
+which ensures that the |match| function terminates.
+We use the derivative operator to implement a different matcher |dmatch| which is easily proved to be terminating,
+then show that |match|, which we have already proven partially correct, is refined by |dmatch|.
+The final major difference is that \citeauthor{harper-regex} uses manual verification of the program and our work is formally computer-verified.
+Although our development takes more work, the correctness proofs give more certainty than the informal arguments made by \citeauthor{harper-regex}.
+In general, choosing between informal reasoning and formal verification will always be a trade-off between speed and accuracy.
 
 All the programs and proofs in this paper are written in the dependently typed language Agda~\cite{agda-thesis}.
 %TODO link?
@@ -842,11 +867,11 @@ diverge. In the next section, we will write a new parser that is guaranteed to
 terminate and show that this parser refines the |match| function
 defined above.
 
-\section{Termination, using derivatives} \label{sec:dmatch} Since
-recursion on the structure of a regular expression does not guarantee
-termination of the parser, we can instead perform recursion on the
-string to be parsed.  To do this, we will use the \emph{Brzozowski
-  derivative}~\cite{Brzozowski} of regular languages:
+\section{Derivatives and handlers} \label{sec:dmatch}
+Since recursion on the structure of a regular expression does not guarantee
+termination of the parser, we can instead perform recursion on the string to be
+parsed.  To do this, we will use the \emph{Brzozowski
+derivative}~\cite{Brzozowski} of regular languages:
 \begin{Def}
 The \emph{Brzozowski derivative} of a formal language |L| with respect to a character |x| consists of all strings |xs| such that |x :: xs ∈ L|.
 \end{Def}
@@ -856,7 +881,7 @@ Thus, let |r| be a regular expression, and |d r /d x| an expression for the deri
 then |r| matches a string |x :: xs| if and only if |d r /d x| matches |xs|.
 This suggests the following implementation of matching an expression |r| with a string |xs|:
 if |xs| is empty, check whether |r| matches the empty string;
-otherwise let |x| be the head of the string and |xs'| the tail and go in recursion on matching |d r /d x| with |xs'|.
+otherwise remove the head |x| of the string and try to match |d r /d x|.
 
 The first step in implementing a parser using the Brzozowski derivative is to compute the derivative for a given regular expression.
 Following \citet{Brzozowski}, we use a helper function |matchEpsilon| that decides whether an expression matches the empty string.
@@ -886,7 +911,7 @@ Following \citet{Brzozowski}, we use a helper function |matchEpsilon| that decid
   matchEpsilon (r *) = yes (Nil , StarNil)
 \end{code}
 %endif
-The definitions of |matchEpsilon| is given by structural recursion on the regular expression, just as the derivative operator is:
+The definition of |matchEpsilon| is given by structural recursion on the regular expression, just as the derivative operator is:
 \begin{code}
   d_/d_ : Regex -> Char -> Regex
   d Empty        /d c    = Empty
@@ -923,18 +948,81 @@ Its definition closely follows the pattern matching performed in the definition 
 \end{code}
 %endif
 
+The description of a derivative-based matcher is stateful:
+a step is done by \emph{removing} a character from the input string.
+This state can be encapsulated in a new effect |Parser|.
+The |Parser| effect has one command |Symbol|.
+Calling |Symbol| will return the head of the unparsed remainder (advancing the string by one character) or |nothing| if the string has been totally consumed.
+\begin{code}
+  data CParser : Set where
+    Symbol : CParser
+  RParser : CParser -> Set
+  RParser Symbol = Maybe Char
+  Parser = mkSig CParser RParser
+
+  symbol : (Forall(es)) ⦃ iP : Parser ∈ es ⦄ -> Free es (Maybe Char)
+  symbol ⦃ iP ⦄ = Op iP Symbol Pure
+\end{code}
+
 The code for the parser, |dmatch|, is now only a few lines long. When
 the input string is empty, we check that the expression matches the
 empty string; for a non-empty string we use the derivative to
 match the first character and recurse:
 \begin{code}
-  dmatch : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ -> (RecArr (Regex × String) es (tree ∘ Pair.fst))
-  dmatch (r , Nil) with matchEpsilon r
-  ... | yes (ms , _)  = Pure ms
-  ... | no ¬p         = fail
-  dmatch (r , (x :: xs)) = integralTree r <$> call (hiddenInstance(∈Head)) ((d r /d x) , xs)
-\end{code}%$stupid syntax highlighting fix closing the <dollar> 
+  dmatch : (Forall(es)) ⦃ iP : Parser ∈ es ⦄ ⦃ iND : Nondet ∈ es ⦄  -> (RecArr Regex es tree)
+  dmatch r = symbol >>= maybe
+    (λ x -> integralTree r <$> call ⦃ ∈Head ⦄ (d r /d x))
+    (if' matchEpsilon r then (λ p -> Pure (Sigma.fst p)) else (hiddenConst(fail)))
+\end{code}
+Here, |maybe f y| takes a |Maybe| value and applies |f| to the value in |just|, or returns |y| if it is |nothing|.
 
+Adding the new effect |Parser| to our repertoire also requires specifying its semantics.
+We gave the effects |Nondet| and |Rec| predicate transformer semantics in the form of a |PT| record.
+After introducing the |Parser| effect, the pre- and postcondition become more complicated:
+not only do they reference the `pure' values passed to and returned (here of type |r : Regex| and |Tree r| respectively),
+there is also the current state, containing a |String|, to keep track of.
+With these augmented predicates, the predicate transformer semantics for the |Parser| effect can be given as:
+\begin{code}
+  ptParser : (c : CParser) -> (RParser c -> String -> Set) -> String -> Set
+  ptParser Symbol P Nil        = P nothing   Nil
+  ptParser Symbol P (x :: xs)  = P (just x)  xs
+\end{code}
+
+In this article, we want to demonstrate the modularity of predicate transformer semantics.
+Thus, we do \emph{not} use |ptParser| as semantics for |Parser| in the remainder,
+so we can illustrate how the semantics mesh well with other forms of semantics.
+We give denotational semantics, in the form of an \emph{effect handler} for |Parser|:% TODO: cite a good source for effect handlers
+\begin{code}
+  hParser : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ -> (c : CParser) -> String -> Free es (RParser c × String)
+  hParser Symbol Nil        = Pure (nothing  , Nil)
+  hParser Symbol (x :: xs)  = Pure (just x   , xs)
+\end{code}
+The function |handleRec| folds a given handler over a recursive definition,
+allowing us to handle the |Parser| effect in |dmatch|.
+\begin{code}
+  handleRec : (Forall(C R es s)) ((c : C) -> s -> Free es (R c × s)) -> (Forall(a b)) (RecArr a (mkSig C R :: es) b) -> (RecArr (a × s) es (b ∘ Pair.fst))
+  dmatch' : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ → (RecArr (Regex × String) es (tree ∘ Pair.fst))
+  dmatch' = handleRec hParser (dmatch (hiddenInstance(∈Head)))
+\end{code}
+%if style == newcode
+\begin{code}
+  handleRec h f (x , s) = Pair.fst <$> handleRec' h (f x) s
+    where
+    liftE : ∀ {e es a} -> Free es a -> Free (e :: es) a
+    liftE (Pure x) = Pure x
+    liftE (Op i c k) = Op (∈Tail i) c λ x -> liftE (k x)
+
+    handleRec' : ∀ {C R es s} -> ((c : C) -> s -> Free es (R c × s)) -> forall { I O a } -> (Free (Rec I O :: mkSig C R :: es) a) -> s -> (Free (Rec (I × s) (O ∘ Pair.fst) :: es) (a × s))
+    handleRec' h (Pure x) t = Pure (x , t)
+    handleRec' h (Op ∈Head i k) t = Op ∈Head (i , t) λ x -> handleRec' h (k x) t
+    handleRec' h (Op (∈Tail ∈Head) c k) t = liftE (h c t) >>= λ xt -> handleRec' h (k (Pair.fst xt)) (Pair.snd xt)
+    handleRec' h (Op (∈Tail (∈Tail i)) c k) t = Op (∈Tail i) c λ x -> handleRec' h (k x) t
+\end{code}
+%endif
+Note that |dmatch'| has exactly the type of the previously defined |match|,
+allowing us to more easily compare the two matchers.
+
+\section{Proving total correctness} \label{sec:dmatch-correct}
 Since |dmatch| always consumes a character before recursing, the
 number of recursive calls is bounded by the length of the input string
 As a result, we `handle' the recursive effect by unfolding the
@@ -980,21 +1068,26 @@ more than a fixed number of steps to terminate:
   terminates-in pts f (Op (∈Tail i) c k)   n        =
     lookupPT pts i c (λ x → terminates-in pts f (k x) n)
 \end{code}
+
 Since |dmatch| always consumes a character before going in recursion,
-we can bound the number of recursive calls by the length of the input string.
-Unfolding the recursive |call| gives |integralTree <$> dmatch (d r /d x , xs)|, %$
+we can bound the number of recursive calls with the length of the input string.
+We formalize this argument in the lemma |dmatchTerminates|.
+Note that |dmatch'| is defined using the |hParser| handler,
+showing that we can mix denotational and predicate transformer semantics.
+The proof goes by induction on this string.
+Unfolding the recursive |call| gives |integralTree r <$> dmatch' (d r /d x , xs)|,
 which we rewrite using the associativity monad law in a lemma called |terminates-fmap|.
 % TODO ik snap deze 'rewrite' niet zo goed -- misschien goed om het
 % type van terminates-fmap in een where clause te geven?
 \begin{code}
   dmatchTerminates : (r : Regex) (xs : String) →
-    terminates-in (ptAll :: Nil) (dmatch (hiddenInstance(∈Head)) ) (dmatch (hiddenInstance(∈Head)) (r , xs)) (length xs)
-  dmatchTerminates r Nil  with matchEpsilon r
-  dmatchTerminates r Nil  | yes p  = tt
-  dmatchTerminates r Nil  | no ¬p  = tt
-  dmatchTerminates r (x :: xs)     = terminates-fmap (length xs)
-                                       (dmatch (hiddenInstance(∈Head)) ((d r /d x) , xs))
-                                       (dmatchTerminates (d r /d x) xs)
+    terminates-in (ptAll :: Nil) (dmatch' (hiddenInstance(∈Head)) ) (dmatch' (hiddenInstance(∈Head)) (r , xs)) (length xs)
+  dmatchTerminates r Nil with matchEpsilon r
+  dmatchTerminates r Nil | yes p  = tt
+  dmatchTerminates r Nil | no ¬p  = tt
+  dmatchTerminates r (x :: xs) = terminates-fmap (length xs)
+    (dmatch' (hiddenInstance(∈Head)) ((d r /d x) , xs))
+    (dmatchTerminates (d r /d x) xs)
 \end{code}
 %if style == newcode
 \begin{code}
@@ -1020,8 +1113,7 @@ given by our original |Match| relation. The first step is to show that the
 derivative operator is correct, i.e. |d r /d x| matches those strings
 |xs| such that |r| matches |x :: xs|.
 \begin{code}
-  derivativeCorrect : (Forall(x xs)) ∀ r -> (Forall(y))
-    Match (d r /d x) xs y -> Match r (x :: xs) (integralTree r y)
+  derivativeCorrect : (Forall(x xs)) ∀ r -> (Forall(y)) Match (d r /d x) xs y -> Match r (x :: xs) (integralTree r y)
 \end{code}
 The proof is straightforward by induction on the derivation of type |Match (d r /d x) xs y|.
 %if style == newcode
@@ -1065,9 +1157,8 @@ The proof is straightforward by induction on the derivation of type |Match (d r 
 % The proof mirrors |allSplits|, performing induction on |xs|.
 
 Using the preceding lemmas, we can prove the partial correctness of |dmatch| by showing it refines |match|:
-% TODO make this wpMatch dmatch ⊑ wpSpec matchSpec ?
 \begin{code}
-  dmatchSound : ∀ r xs -> (wpMatch (match (hiddenInstance(∈Head)) (r , xs))) ⊑ (wpMatch (dmatch (hiddenInstance(∈Head)) (r , xs)))
+  dmatchSound : ∀ r xs -> (wpMatch (match (hiddenInstance(∈Head)) (r , xs))) ⊑ (wpMatch (dmatch' (hiddenInstance(∈Head)) (r , xs)))
 \end{code}
 Since we need to perform the case distinctions of |match| and of |dmatch|,
 the proof is longer than that of |matchSoundness|.
@@ -1132,7 +1223,7 @@ choice of the |ptAll| semantics with the angelic choice of |ptAny|, we
 require that |dmatch| \emph{must} return a result:
 \begin{code}
   dmatchComplete : ∀ r xs y → Match r xs y →
-    (wp (ptRec matchSpec :: ptAny :: Nil) (dmatch (hiddenInstance(∈Head)) (r , xs))) (λ _ → ⊤)
+    (wp (ptRec matchSpec :: ptAny :: Nil) (dmatch' (hiddenInstance(∈Head)) (r , xs))) (λ _ → ⊤)
 \end{code}
 The proof is short, since |dmatch| can only |fail| when it encounters
 an empty string and a regular expression that does not match the empty
@@ -1143,6 +1234,7 @@ string, which contradicts the assumption |Match r xs y|:
   ... | no ¬p = ¬p (_ , H)
   dmatchComplete r (x :: xs) y H y' H' = tt
 \end{code}
+
 % Note that |dmatchComplete| does not guarantee that |dmatch|
 % terminates: the semantics for the recursive case assume that |dmatch|
 %  some value |y'|.
@@ -1160,36 +1252,7 @@ correct parser for regular languages.
 % refinement van de all/any predicate transformers
 % completeness/soundness garanderen?
 
-Note the correspondences of this section with a Functional Pearl by
-\citet{harper-regex}, which also uses the parsing of regular languages
-as an example of principles of functional software development.
-Starting out with defining regular expressions as a data type and the
-language associated with each expression as an inductive relation,
-both use the relation to implement essentially the same |match|
-function, which does not terminate.  In both, the partial correctness
-proof of |match| uses a specification expressed as a postcondition,
-based on the inductive relation representing the language of a given
-regular expression.  Where we use nondeterminism to handle the
-concatenation operator, \citeauthor{harper-regex} uses a
-continuation-passing parser for control flow.  Since the continuations
-take the unparsed remainder of the string, they correspond almost
-directly to the |Parser| effect of the following section.  Another
-main difference between our implementation and
-\citeauthor{harper-regex}'s is in the way the non-termination of
-|match| is resolved.  \citeauthor{harper-regex} uses the derivative
-operator to rewrite the expression in a standard form which ensures
-that the |match| function terminates.  We use the derivative operator
-to implement a different matcher |dmatch| which is easily proved to be
-terminating, then show that |match|, which we have already proven
-partially correct, is refined by |dmatch|.  The final major difference
-is that \citeauthor{harper-regex} uses manual verification of the
-program and our work is formally computer-verified.  Although our
-development takes more work, the correctness proofs give more
-certainty than the informal arguments made by
-\citeauthor{harper-regex}.  In general, choosing between informal
-reasoning and formal verification will always be a trade-off between
-speed and accuracy.
-
+\iffalse
 \section{Parsing as effect} \label{sec:parser}
 %if style == newcode
 \begin{code}
@@ -1892,6 +1955,7 @@ It calls |parseStepRec| since the parser only starts consuming characters after 
     ... | no ¬p = filterStep prods' (subset ∘ ∈Tail) A str str' lt
 \end{code}
 As for partial correctness, we obtain the proof of termination by applying |filterStep| to the subset of |prods| consisting of |prods| itself.
+\fi
 
 \section{Discussion}
 
@@ -1931,7 +1995,7 @@ so the goal of verifying a practical program remains a step further.
 % Perhaps a translation of ``er valt iets af te dingen aan het idee dat we een praktisch programma verifiëren'' is more apt.
 
 We have described how coproducts allow for combinations of effect syntax and semantics,
-but not how these combinations interact with effect handlers.
+and how an individual handler interacts with these semantics.
 The interaction between different effects means
 applying handlers in a different order can result in different semantics.
 We assign predicate transformer semantics to a combination of effects all at once,

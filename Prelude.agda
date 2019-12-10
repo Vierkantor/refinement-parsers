@@ -371,3 +371,5 @@ out (In x) = x
 sum : ∀ {l} {a : Set l} (f : a → Nat) (xs : List a) → Nat
 sum f Nil = 0
 sum f (x :: xs) = f x Data.Nat.+ sum f xs
+
+open import Data.Maybe public hiding (map ; _>>=_)
