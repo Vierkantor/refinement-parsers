@@ -57,23 +57,21 @@ with recursive grammars. Proof techniques, such as equational
 reasoning, that are commonly used when reasoning about pure functional programs, are less
 suitable when verifying effectful programs.%TODO Cite Fulgur and hutton? just do it?
 
-In this paper, we explore a different approach, drawing inspiration from
-recent work on algebraic effects~\cite{eff, effect-handlers-in-scope,
-  McBride-totally-free}.  
-We demonstrate how to reason about all parsers uniformly using
-\emph{predicate transformers}~\cite{pt-semantics-for-effects}.
-We extend our previous work that uses predicate transformer semantics to reason about a single effect
-to handle the combinations of effects used by parsers.
-Our semantics is modular, allowing us to introduce concepts %TODO: wat bedoel je hier met concepts?
-only when they are needed,
-without having to rework the previous definitions.
-In particular, our careful treatment
-of general recursion lets us separate the partial correctness of the
-combinators from their termination cleanly. Most existing
-proofs require combinators to guarantee that the string being parsed
-decreases, conflating termination and correctness.
+In this paper, we explore a novel approach, drawing inspiration from recent
+work on algebraic effects~\cite{eff, effect-handlers-in-scope,
+McBride-totally-free}.  We demonstrate how to reason about all parsers
+uniformly using \emph{predicate transformers}~\cite{pt-semantics-for-effects}.
+We extend our previous work that uses predicate transformer semantics to reason
+about a single effect, to handle the combinations of effects used by parsers.
+Our semantics is modular, meaning we can introduce new effects, semantics and
+properties to be verified at the point they are needed, without having to
+rework the previous definitions.  In particular, our careful treatment of
+general recursion lets us separate the partial correctness of the combinators
+from their termination cleanly. Most existing proofs require combinators to
+guarantee that the string being parsed decreases, conflating termination and
+correctness.
 
-In particular, this paper makes the following novel contributions:
+In particular, the sections of this paper make the following contributions:
 \begin{itemize}
 \item The non-recursive fragment of regular expressions can be correctly parsed
   using non-determinism (Section \ref{sec:regex-nondet}).
@@ -82,7 +80,7 @@ In particular, this paper makes the following novel contributions:
   (Section \ref{sec:regex-rec}).
 \item Although the resulting parser is not guaranteed to terminate,
   we can define another implementation using Brzozowski derivatives (Section \ref{sec:dmatch}),
-  introducing an extra effect to our combinations and its handler in the process.
+  introducing an additional effect and its semantics in the process.
 \item Finally, we show that the derivative-based implementation terminates
   and \emph{refines} the original parser (Section \ref{sec:dmatch-correct}).
 
@@ -95,11 +93,15 @@ In particular, this paper makes the following novel contributions:
 \fi
 \end{itemize}
 
-The structure of our article is similar to a Functional Pearl by \citet{harper-regex},
+The goal of our work is not the regular expression parsers we write, or even
+its correctness proof, both of which have been done before. % TODO: cite?
+Instead, we discuss the steps of writing and verifying the parser to illustrate
+the process of reasoning with predicate transformers and algebraic effects.
+We work in the spirit of a Functional Pearl by \citet{harper-regex},
 which also uses the parsing of regular languages as an example of principles of functional software development.
 Starting out with defining regular expressions as a data type and the language associated with each expression as an inductive relation,
 both use the relation to implement essentially the same |match| function, which does not terminate.
-In both, the partial correctness proof of |match| uses a specification expressed as a postcondition,
+In both papers, the partial correctness proof of |match| uses a specification expressed as a postcondition,
 based on the inductive relation representing the language of a given regular expression.
 Where we use nondeterminism to handle the concatenation operator,
 \citeauthor{harper-regex} uses a continuation-passing parser for control flow.
@@ -112,15 +114,18 @@ which ensures that the |match| function terminates.
 We use the derivative operator to implement a different matcher |dmatch| which is easily proved to be terminating,
 then show that |match|, which we have already proven partially correct, is refined by |dmatch|.
 The final major difference is that \citeauthor{harper-regex} uses manual verification of the program and our work is formally computer-verified.
-Although our development takes more work, the correctness proofs give more certainty than the informal arguments made by \citeauthor{harper-regex}.
-In general, choosing between informal reasoning and formal verification will always be a trade-off between speed and accuracy.
+% Although our development takes more work, the correctness proofs give more certainty than the informal arguments made by \citeauthor{harper-regex}.
+% In general, choosing between informal reasoning and formal verification will always be a trade-off between speed and accuracy.
 
-All the programs and proofs in this paper are written in the dependently typed language Agda~\cite{agda-thesis}.
+All the programs and proofs in this paper are written in the dependently typed language Agda~\cite{agda-thesis},
+and are thus formally verified.
 %TODO link?
+Apart from postulating function extensionality,
+we remain entirely within Agda's default theory.
 
 \section{Recap: algebraic effects and predicate transformers}
 Algebraic effects separate the \emph{syntax} and \emph{semantics} of
-effectful operations. In this paper, we will model the by taking the
+effectful operations. In this paper, we will model them by taking the
 free monad over a given signature, describing certain
 operations. The type of such a signature is defined as follows:
 \begin{code}
@@ -201,6 +206,7 @@ Thus, |alg| has the form of a predicate transformer from postconditions of type
 |R → Set| into preconditions of type |C → Set|.
 % The type of |(wp alg)| under the same isomorphism becomes
 % |(a -> Set) -> (Free e a → Set)|.
+
 Two considerations cause us to define the types |alg : (c : C) → (R c → Set) → Set|,
 and analogously |(wp alg) : Free (mkSig C R) a → (a → Set) → Set|.
 By having the command as first argument to |alg|, we allow |R| to depend on |C|.
@@ -247,7 +253,7 @@ module Spec where
 \end{code}
 Inspired by work on the refinement calculus, we can assign a predicate
 transformer semantics to specifications as follows:
-\begin{code}    
+\begin{code}
   (wpSpec) : (Forall(a)) Spec a -> (a -> Set) -> Set
   wpSpec [[ pre , post ]] P = pre ∧ (∀ o -> post o -> P o)
 \end{code}
@@ -285,7 +291,7 @@ ourselves to non-recursive regular expressions; we will add recursion
 in the next section.
 
 We begin by defining the |Regex| datatype for regular expressions as
-follows: An element of this type represents the syntax of a regular
+follows: An element of this type represents the syntax of a regular expression.
 % Introduce formatting for the * operator later, to avoid confusion with multiplication.
 %if style == poly
 %format _* = "\_\!\mathbin{\star}"
@@ -357,7 +363,7 @@ The cases for concatenation and iteration are more
 interesting. Crucially the |Concat| constructor constructs a match on
 the concatenation of the strings |xs| and |zs| -- although there may
 be many possible ways to decompose a string into two
-substrings. Finally, the two constructors for the Kleene star, |r ⋆|
+substrings. Finally, the two constructors for the Kleene star, |r *|,
 match zero (|StarNil|) or many (|StarConcat|) repetitions of |r|.
 
 We will now turn our attention to the |match| function. The complete
@@ -404,16 +410,16 @@ module AlmostRegex where
   \end{code}
   \caption{The definition of the |match| function}
   \label{fig:match}
-\end{figure}  
+\end{figure}
 Finally, we cannot yet handle the case for the Kleene star.  We could
 attempt to mimic the case for concatenation, attempting to match |r ·
-(r ⋆)|. This definition, however, is rejected by Agda as it is not
+(r *)|. This definition, however, is rejected by Agda as it is not
 structurally recursive. For now, however, we choose to simply fail on
 all such regular expressions.
 
 Still, we can prove that the |match| function behaves correctly on all
-regular expressions that do not contain iteration. The |hasNo*|
-predicate holds of all such iteration-free regular expressions:
+regular expressions that do not contain iteration. We introduce a |hasNo*|
+predicate, which holds of all such iteration-free regular expressions:
 \begin{code}
   hasNo* : Regex -> Set
 \end{code}
@@ -441,12 +447,13 @@ The main correctness result can now be formulated as follows:
 \end{code}
 This lemma guarantees that all the parse trees computed by the |match|
 function satisfy the |Match| relation, provided the input regular
-expression does not contain iteration. Although we have omitted the
-proof, we will sketch the key lemmas and definitions that are
-necessary to complete it.
+expression does not contain iteration. The proof goes by induction on the
+regular expression |r|. Although we have omitted the proof, we will sketch the
+key lemmas and definitions that are necessary to complete it.
 
-First of all, we quickly run into problems as soon as we need to
-reason about programs composed using the monadic bind operator. In
+In most of the cases for |r|, the definition of |match r| is uncomplicated and
+the proof is similarly simple. As soon as we need to reason about programs
+composed using the monadic bind operator, we quickly run into issues. In
 particular, when verifying the case for |l · r|, we would like to use
 our induction hypotheses on two recursive calls. To do, we prove the
 following lemma that allows us to replace the semantics of a composite
@@ -477,14 +484,16 @@ Substituting along this equality gives us the lemmas we need to deal with the |_
 \end{code}
 %endif
 
-The correctness proof for |match| closely matches the structure of |match| (and by extension |allSplits|).
-It uses the same recursion on |Regex| as in the definition of |match|.
-Since we make use of |allSplits| in the definition, we first give its correctness proof.
+Not only does |match (l · r)| result in two recursive calls,
+it also makes a call to a helper function |allSplits|.
+Thus, we also need to formulate and prove the correctness of that function, as follows:
 \begin{code}
   allSplitsPost : String → String × String → Set
   allSplitsPost xs (ys , zs) = xs == ys ++ zs
   allSplitsSound : ∀ xs -> (wpSpec [[ ⊤ , (allSplitsPost xs) ]]) ⊑ (wpNondetAll (allSplits xs))
 \end{code}
+Using |wpToBind|, we can incorporate the correctness proof of |allSplits|
+in the correctness proof of |match|.
 We refer to the accompanying code for the complete details of these
 proofs.
 %if style == newcode
@@ -493,7 +502,7 @@ proofs.
   allSplitsSound (x :: xs)  P (preH , postH) = postH _ refl ,
     wpToBind (allSplits xs) _ (allSplitsSound xs _ (tt ,
       λ _ H → postH _ (cong (x ::_) H)))
-  
+
   matchSound Empty xs           P (preH , postH) = tt
   matchSound Epsilon Nil        P (preH , postH) = postH _ Epsilon
   matchSound Epsilon (x :: xs)  P (preH , postH) = tt
@@ -516,6 +525,8 @@ proofs.
   matchSound (r *) xs P (() , postH)
 \end{code}
 %endif
+
+
 \section{General recursion and non-determinism} \label{sec:combinations}
 The matcher we have defined in the previous section is incomplete,
 since it fails to handle regular expressions that use the Kleene star.
@@ -629,7 +640,7 @@ provided we can show that the list |es| contains the |NonDet| and
   choices ⦃ iND ⦄ = foldr choice fail
 \end{code}
 %endif
-For convenience of notation, we introduce the |(RecArr _ es _)| notation for general recursion,
+For convenience of notation, we introduce the |(RecArr _ es _)| notation for the type of generally recursive functions with effects in |es|,
 i.e. Kleisli arrows into |Free (Rec _ _ :: es)|.
 \begin{code}
   RecArr' : (C : Set) (es : List Sig) (R : C → Set) → Set₁
@@ -949,10 +960,10 @@ Its definition closely follows the pattern matching performed in the definition 
 %endif
 
 The description of a derivative-based matcher is stateful:
-a step is done by \emph{removing} a character from the input string.
+we perform a step by \emph{removing} a character from the input string.
 This state can be encapsulated in a new effect |Parser|.
-The |Parser| effect has one command |Symbol|.
-Calling |Symbol| will return the head of the unparsed remainder (advancing the string by one character) or |nothing| if the string has been totally consumed.
+The |Parser| effect has one command |Symbol| that returns a |Maybe Char|.
+Calling |Symbol| will return |just| the head of the unparsed remainder (advancing the string by one character) or |nothing| if the string has been totally consumed.
 \begin{code}
   data CParser : Set where
     Symbol : CParser
@@ -971,15 +982,17 @@ match the first character and recurse:
 \begin{code}
   dmatch : (Forall(es)) ⦃ iP : Parser ∈ es ⦄ ⦃ iND : Nondet ∈ es ⦄  -> (RecArr Regex es tree)
   dmatch r = symbol >>= maybe
-    (λ x -> integralTree r <$> call ⦃ ∈Head ⦄ (d r /d x))
+    (λ x -> integralTree r <$> call (hiddenInstance(∈Head)) (d r /d x))
     (if' matchEpsilon r then (λ p -> Pure (Sigma.fst p)) else (hiddenConst(fail)))
 \end{code}
+% 
+    TODO: can we use syntax like `if p : matchEpsilon r then Pure (Sigma.fst p) else fail' ?
 Here, |maybe f y| takes a |Maybe| value and applies |f| to the value in |just|, or returns |y| if it is |nothing|.
 
 Adding the new effect |Parser| to our repertoire also requires specifying its semantics.
 We gave the effects |Nondet| and |Rec| predicate transformer semantics in the form of a |PT| record.
 After introducing the |Parser| effect, the pre- and postcondition become more complicated:
-not only do they reference the `pure' values passed to and returned (here of type |r : Regex| and |Tree r| respectively),
+not only do they reference the `pure' arguments and return values (here of type |r : Regex| and |Tree r| respectively),
 there is also the current state, containing a |String|, to keep track of.
 With these augmented predicates, the predicate transformer semantics for the |Parser| effect can be given as:
 \begin{code}
@@ -989,8 +1002,8 @@ With these augmented predicates, the predicate transformer semantics for the |Pa
 \end{code}
 
 In this article, we want to demonstrate the modularity of predicate transformer semantics.
-Thus, we do \emph{not} use |ptParser| as semantics for |Parser| in the remainder,
-so we can illustrate how the semantics mesh well with other forms of semantics.
+To illustrate how the semantics mesh well with other forms of semantics,
+we do \emph{not} use |ptParser| as semantics for |Parser| in the remainder.
 We give denotational semantics, in the form of an \emph{effect handler} for |Parser|:% TODO: cite a good source for effect handlers
 \begin{code}
   hParser : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ -> (c : CParser) -> String -> Free es (RParser c × String)
@@ -1020,7 +1033,7 @@ allowing us to handle the |Parser| effect in |dmatch|.
 \end{code}
 %endif
 Note that |dmatch'| has exactly the type of the previously defined |match|,
-allowing us to more easily compare the two matchers.
+conveniently allowing us to re-use the |wpMatch| semantics.
 
 \section{Proving total correctness} \label{sec:dmatch-correct}
 Since |dmatch| always consumes a character before recursing, the
@@ -1060,8 +1073,7 @@ following predicate, |terminates-in|. Given any recursive computation
 |f : (RecArr C es R)|, we check whether the computation requires no
 more than a fixed number of steps to terminate:
 \begin{code}
-  terminates-in : (Forall(C R es a)) (pts : PTs es)
-    (f : (RecArr C es R)) (S : Free (mkSig C R :: es) a) → Nat → Set
+  terminates-in : (Forall(C R es a)) (pts : PTs es) (f : (RecArr C es R)) (S : Free (mkSig C R :: es) a) → Nat → Set
   terminates-in pts f (Pure x)            n         = ⊤
   terminates-in pts f (Op ∈Head c k)      Zero      = ⊥
   terminates-in pts f (Op ∈Head c k)      (Succ n)  = terminates-in pts f (f c >>= k) n
@@ -1155,7 +1167,6 @@ The proof is straightforward by induction on the derivation of type |Match (d r 
 \end{code}
 %endif
 % The proof mirrors |allSplits|, performing induction on |xs|.
-
 Using the preceding lemmas, we can prove the partial correctness of |dmatch| by showing it refines |match|:
 \begin{code}
   dmatchSound : ∀ r xs -> (wpMatch (match (hiddenInstance(∈Head)) (r , xs))) ⊑ (wpMatch (dmatch' (hiddenInstance(∈Head)) (r , xs)))
