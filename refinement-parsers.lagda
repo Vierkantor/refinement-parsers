@@ -1156,6 +1156,10 @@ imply partial correctness, and partial correctness and termination
 imply total correctness, we can conclude that |dmatch| is a totally
 correct parser for regular languages.
 
+% TODO Wouter: misschien goed om expliciet te benadrukken hoe
+% refinement van de all/any predicate transformers
+% completeness/soundness garanderen?
+
 Note the correspondences of this section with a Functional Pearl by
 \citet{harper-regex}, which also uses the parsing of regular languages
 as an example of principles of functional software development.
