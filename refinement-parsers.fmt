@@ -56,6 +56,7 @@
 %format ^^ = "\;"
 %format Set1 = Set
 %format forall = "\forall"
+%format do = "\ensuremath{\mathbf{do}}"
 %format _>>=_ = "\_\!\bind\!\_"
 %format _>=>_ = "\_\!>\!\!\!\!\mathbin{=}\!\!\!\!>\!\_"
 %format >=> = ">\!\!\!\!\mathbin{=}\!\!\!\!>"

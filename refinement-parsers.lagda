@@ -54,10 +54,10 @@ Reasoning about such parser combinators is not at all trivial; they
 use a variety of effects: state to store the string being parsed;
 non-determinism to handle backtracking; and general recursion to deal
 with recursive grammars. Proof techniques, such as equational
-reasoning, that commonly used when reasoning about pure functional programs, are less
+reasoning, that are commonly used when reasoning about pure functional programs, are less
 suitable when verifying effectful programs.%TODO Cite Fulgur and hutton? just do it?
 
-In this paper, we explore a novel approach, drawing inspiration from
+In this paper, we explore a different approach, drawing inspiration from
 recent work on algebraic effects~\cite{eff, effect-handlers-in-scope,
   McBride-totally-free}.  
 We demonstrate how to reason about all parsers uniformly using
@@ -371,12 +371,11 @@ module AlmostRegex where
   match (Singleton c)  (x :: Nil)     | no ¬p     = fail
   match (Singleton c)  (_ :: _ :: _)  = fail
   match (l ∣ r)        xs             = choice (Inl <$> match l xs) (Inr <$> match r xs)  
-  match (l · r)        xs             = do
-    (ys , zs) <- allSplits xs
-    y <- match l ys
-    z <- match r zs
-    Pure (y , z)
-  match (r *) xs = fail    
+  match (l · r)        xs             = do  (ys , zs) <- allSplits xs
+                                            y <- match l ys
+                                            z <- match r zs
+                                            Pure (y , z)
+  match (r *) xs                      = fail    
   \end{code}
   \caption{The definition of the |match| function}
   \label{fig:match}
@@ -638,12 +637,12 @@ module Stateless where
   record PT (e : Sig) : Set₁ where
     constructor mkPT
     field
-      pt : (c : C e) → (R e c → Set) → Set
-      mono : ∀ c P P' → P ⊆ P' → pt c P → pt c P'
+      pt    : (c : C e) → (R e c → Set) → Set
+      mono  : ∀ c P P' → P ⊆ P' → pt c P → pt c P'
 
   data PTs : List Sig -> Set₁ where
-    Nil : PTs Nil
-    _::_ : (Forall(e es)) PT e -> PTs es -> PTs (e :: es)
+    Nil   : PTs Nil
+    _::_  : (Forall(e es)) PT e -> PTs es -> PTs (e :: es)
 \end{code}
 The record type |PT| not only contains a predicate transformer |pt|,
 but also a proof that this predicate transformer is
@@ -664,8 +663,8 @@ The |Pure| case is identical, and in the |Op| case we can apply the predicate tr
 %if style == newcode
 \begin{code}
   lookupMono : ∀ {C R es} (pts : PTs es) (i : mkSig C R ∈ es) -> ∀ c P P' → P ⊆ P' → lookupPT pts i c P → lookupPT pts i c P'
-  lookupMono (pt :: pts) ∈Head = PT.mono pt
-  lookupMono (pt :: pts) (∈Tail i) = lookupMono pts i
+  lookupMono (pt :: pts) ∈Head      = PT.mono pt
+  lookupMono (pt :: pts) (∈Tail i)  = lookupMono pts i
 \end{code}
 %endif
 This results in the following definition of the semantics for combinations of effects.
@@ -676,7 +675,7 @@ This results in the following definition of the semantics for combinations of ef
   (wp pts (Op i c k))  P  = lookupPT pts i c λ x -> (wp pts (k x)) P
 \end{code}
 
-The effects we are planning to use for our |match| function are a
+The effects that we will use for our |match| function consist of a
 combination of nondeterminism and general recursion.  Although we can
 reuse the |ptAll| semantics of nondeterminism, we have not yet given
 the semantics for recursion.  However, it is not as easy to give a
@@ -711,6 +710,14 @@ The types become:
   allSplits : (Forall(a es)) ⦃ iND :  Nondet ∈ es ⦄ -> List a -> Free es (List a × List a)
   match : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ → (RecArr (Regex × String) es (tree ∘ Pair.fst))
 \end{code}
+% TODO - we zouden er voor kunnen kiezen om dit weg te laten en alleen
+% kort te benoemen dat we de types iets moeten generaliseren.
+
+% TODO - wat doet de Pair.fst hier ook al weer? (Na even puzzelen kwam
+% ik er wel achter -- je wilt aan de regexp in de input komen, maar
+% dat is wat verwarrend aangezien de kromme pijl een beetje
+% suggerereert dat er links en rechts iets van type Set staat.
+
 %if style == newcode
 \begin{code}
   allSplits Nil = Pure (Nil , Nil)
@@ -737,7 +744,8 @@ The types become:
 \end{code}
 %endif
 Since the index argument to the smart constructor is inferred by Agda,
-the only change in the definition of |match| and |allSplits| will be that |match| now implements the Kleene star:
+the only change in the definition of |match| and |allSplits| will be
+that |match| now does have a meaningful branch for the Kleene star case:
 \begin{code}
   match ((r *) , Nil) = Pure Nil
   match ((r *) , xs@(_ :: _)) = do
@@ -788,9 +796,9 @@ As discussed, we first need to give the specification for |match| before we can 
 \end{code}
 %endif
 
-We can reuse exactly the same proof to show |allSplits| is correct,
-since we use the same semantics for the effects in |allSplits|.
-Similarly, the correctness proof of |match| will be the same on all cases except the Kleene star.
+We can reuse exactly our proof that |allSplits| is correct,
+since we use the same semantics for the non-determinism used in the definition of |allSplits|.
+Similarly, the partial correctness proof of |match| will be the same on all cases except the Kleene star.
 %if style == newcode
 \begin{code}
   allSplitsSound : ∀ (xs : String) ->
@@ -820,32 +828,30 @@ On the other hand, the correctness proof for |match| needs a bit of tweaking to 
 %endif
 Now we are able to prove correctness of |match| on a Kleene star.
 \begin{code}
-  matchSound ((r *) , Nil)        P (preH , postH) = postH _ StarNil
-  matchSound ((r *) , (x :: xs))  P (preH , postH) o H = postH _ (StarConcat H)
+  matchSound ((r *) , Nil)        P (preH , postH)      = postH _ StarNil
+  matchSound ((r *) , (x :: xs))  P (preH , postH) o H  = postH _ (StarConcat H)
 \end{code}
 
-At this point, we have defined a parser for regular languages
-and formally proved that its output is always correct.
-However, |match| does not necessarily terminate:
-if |r| is a regular expression that accepts the empty string,
-then calling |match| on |r *| and a string |xs|
-results in the first nondeterministic alternative being an infinitely deep recursion.
+At this point, we have defined a matcher for regular languages and
+formally proven that when it succeeds in recognizing a given string,
+this string is indeed in the language generated by the argument
+regular expression.  However, the |match| function does not
+necessarily terminate: if |r| is a regular expression that accepts the
+empty string, then calling |match| on |r *| and a string |xs| will
+diverge. In the next section, we will write a new parser that is guaranteed to
+terminate and show that this parser refines the |match| function
+defined above.
 
-The next step is then to write a parser that always terminates
-and show that |match| is refined by it.
-Our approach is to do recursion on the input string
-instead of on the regular expression.
-
-\section{Termination, using derivatives} \label{sec:dmatch}
-Since recursion on the structure of a regular expression
-does not guarantee termination of the parser,
-we can instead perform recursion on the string to be parsed.
-To do this, we make use of an operation on languages called the Brzozowski derivative.
-\begin{Def}[\cite{Brzozowski}]
+\section{Termination, using derivatives} \label{sec:dmatch} Since
+recursion on the structure of a regular expression does not guarantee
+termination of the parser, we can instead perform recursion on the
+string to be parsed.  To do this, we will use the \emph{Brzozowski
+  derivative}~\cite{Brzozowski} of regular languages:
+\begin{Def}
 The \emph{Brzozowski derivative} of a formal language |L| with respect to a character |x| consists of all strings |xs| such that |x :: xs ∈ L|.
 \end{Def}
 
-Importantly, if |L| is regular, so are all its derivatives.
+Crucially, if |L| is regular, so are all its derivatives.
 Thus, let |r| be a regular expression, and |d r /d x| an expression for the derivative with respect to |x|,
 then |r| matches a string |x :: xs| if and only if |d r /d x| matches |xs|.
 This suggests the following implementation of matching an expression |r| with a string |xs|:
@@ -883,25 +889,25 @@ Following \citet{Brzozowski}, we use a helper function |matchEpsilon| that decid
 The definitions of |matchEpsilon| is given by structural recursion on the regular expression, just as the derivative operator is:
 \begin{code}
   d_/d_ : Regex -> Char -> Regex
-  d Empty /d c = Empty
-  d Epsilon /d c = Empty
-  d Singleton x /d c with c ≟ x
-  ... | yes p = Epsilon
-  ... | no ¬p = Empty
-  d l · r /d c with matchEpsilon l
-  ... | yes p = ((d l /d c) · r) ∣ (d r /d c)
-  ... | no ¬p = (d l /d c) · r
-  d l ∣ r /d c = (d l /d c) ∣ (d r /d c)
-  d r * /d c = (d r /d c) · (r *)
+  d Empty        /d c    = Empty
+  d Epsilon      /d c    = Empty
+  d Singleton x  /d c    with c ≟ x
+  ...                    | yes p  = Epsilon
+  ...                    | no ¬p  = Empty
+  d l · r        /d c    with matchEpsilon l
+  ...                    | yes p  = ((d l /d c) · r) ∣ (d r /d c)
+  ...                    | no ¬p  = (d l /d c) · r
+  d l ∣ r        /d c    = (d l /d c) ∣ (d r /d c)
+  d r *          /d c    = (d r /d c) · (r *)
 \end{code}
 
-In order to use the derivative of |r| to compute a parse tree for |r|,
+To use the derivative of |r| to compute a parse tree for |r|,
 we need to be able to convert a tree for |d r /d x| to a tree for |r|.
-We do this with the function |integralTree|:
+As this function `inverts' the result of derivation, we name it |integralTree|:
 \begin{code}
   integralTree : (implicit(x : Char)) (r : Regex) -> tree (d r /d x) → tree r
 \end{code}
-We can also define it with exactly the same case distinction as we used to define |d_/d_|.
+Its definition closely follows the pattern matching performed in the definition of |d_/d_|.
 %if style == newcode
 \begin{code}
   integralTree Empty ()
@@ -917,64 +923,78 @@ We can also define it with exactly the same case distinction as we used to defin
 \end{code}
 %endif
 
-The code for the parser, |dmatch|, itself is very short.
-As we sketched, for an empty string we check that the expression matches the empty string,
-while for a non-empty string we use the derivative to perform a recursive call.
+The code for the parser, |dmatch|, is now only a few lines long. When
+the input string is empty, we check that the expression matches the
+empty string; for a non-empty string we use the derivative to
+match the first character and recurse:
 \begin{code}
   dmatch : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ -> (RecArr (Regex × String) es (tree ∘ Pair.fst))
   dmatch (r , Nil) with matchEpsilon r
   ... | yes (ms , _)  = Pure ms
   ... | no ¬p         = fail
   dmatch (r , (x :: xs)) = integralTree r <$> call (hiddenInstance(∈Head)) ((d r /d x) , xs)
-\end{code}
+\end{code}%$stupid syntax highlighting fix closing the <dollar> 
 
-Since |dmatch| always consumes a character before going in recursion, we can easily prove that each recursive call only leads to finitely many other calls.
-This means that for each input value we can unfold the recursive step in the definition a bounded number of times and get a computation with no recursion.
-Intuitively, this means that |dmatch| terminates on all input.
-If we are going to give a formal proof of termination, we should first determine the correct formalization of this notion.
-For that, we need to consider what it means to have no recursion in the unfolded computation.
-A definition for the |while| loop using general recursion looks as follows:
-\begin{code}
-  while : (Forall(es a)) ⦃ iRec : Rec a (K a) ∈ es ⦄ ->
-    (a -> Bool) -> (a -> a) -> (a -> Free es a)
-  while cond body i = if cond i then Pure i else (call (body i))
-\end{code}
-We would like to say that some |while| loops terminate, yet the definition of |while| always contains a |call| in it.
-Thus, the requirement should not be that there are no more calls left,
-but that these calls are irrelevant.
+Since |dmatch| always consumes a character before recursing, the
+number of recursive calls is bounded by the length of the input string
+As a result, we `handle' the recursive effect by unfolding the
+definition a bounded number of times. In the remainder of this
+section, we will make this argument precise and relate the |dmatch|
+function above to the |match| function defined previously.
 
-Intuitively, we could say that a definition |S| calling |f| terminates
-if we make the unfolded definition into a |Partial| computation by replacing |call| with |fail|,
-the definition terminates if the |Partial| computation still works the same, i.e. it refines |S|.
-However, this mixes the concepts of correctness and termination.
-We want to see that the |Partial| computation gives some output, without caring about which output this is.
-Thus, we should only have a trivial postcondition.
-We formalize this idea in the |terminates-in| predicate.
+% Intuitively, this means that |dmatch| terminates on all input.  If we
+% are going to give a formal proof of termination, we should first
+% determine the correct formalization of this notion.  For that, we need
+% to consider what it means to have no recursion in the unfolded
+% computation.  A definition for the |while| loop using general
+% recursion looks as follows:
+% \begin{code}
+%   while : (Forall(es a)) ⦃ iRec : Rec a (K a) ∈ es ⦄ ->
+%     (a -> Bool) -> (a -> a) -> (a -> Free es a)
+%   while cond body i = if cond i then Pure i else (call (body i))
+% \end{code}
+% We would like to say that some |while| loops terminate, yet the definition of |while| always contains a |call| in it.
+% Thus, the requirement should not be that there are no more calls left,
+% but that these calls are irrelevant.
+%
+% Wouter: ik vond de discussie hierboven wat verwarrend. Ik heb
+% geprobeerd om het te integreren met de uitleg hieronder.
+
+% Intuitively, we could say that a definition |S| calling |f| terminates
+% if we make the unfolded definition into a |Partial| computation by replacing |call| with |fail|,
+% the definition terminates if the |Partial| computation still works the same, i.e. it refines |S|.
+% However, this mixes the concepts of correctness and termination.
+
+% We want to see that the |Partial| computation gives some output,
+% without caring about which output this is.
+To ensure the termination of a recursive computation, we define the
+following predicate, |terminates-in|. Given any recursive computation
+|f : (RecArr C es R)|, we check whether the computation requires no
+more than a fixed number of steps to terminate:
 \begin{code}
   terminates-in : (Forall(C R es a)) (pts : PTs es)
     (f : (RecArr C es R)) (S : Free (mkSig C R :: es) a) → Nat → Set
-  terminates-in pts f (Pure x) n = ⊤
-  terminates-in pts f (Op ∈Head c k) Zero = ⊥
-  terminates-in pts f (Op ∈Head c k) (Succ n) =
-    terminates-in pts f (f c >>= k) n
-  terminates-in pts f (Op (∈Tail i) c k) n =
+  terminates-in pts f (Pure x)            n         = ⊤
+  terminates-in pts f (Op ∈Head c k)      Zero      = ⊥
+  terminates-in pts f (Op ∈Head c k)      (Succ n)  = terminates-in pts f (f c >>= k) n
+  terminates-in pts f (Op (∈Tail i) c k)   n        =
     lookupPT pts i c (λ x → terminates-in pts f (k x) n)
 \end{code}
-
 Since |dmatch| always consumes a character before going in recursion,
-we can bound the number of recursive calls with the length of the input string.
-The proof goes by induction on this string.
-Unfolding the recursive |call| gives |integralTree <$> dmatch (d r /d x , xs)|,
+we can bound the number of recursive calls by the length of the input string.
+Unfolding the recursive |call| gives |integralTree <$> dmatch (d r /d x , xs)|, %$
 which we rewrite using the associativity monad law in a lemma called |terminates-fmap|.
+% TODO ik snap deze 'rewrite' niet zo goed -- misschien goed om het
+% type van terminates-fmap in een where clause te geven?
 \begin{code}
   dmatchTerminates : (r : Regex) (xs : String) →
     terminates-in (ptAll :: Nil) (dmatch (hiddenInstance(∈Head)) ) (dmatch (hiddenInstance(∈Head)) (r , xs)) (length xs)
-  dmatchTerminates r Nil with matchEpsilon r
-  dmatchTerminates r Nil | yes p = tt
-  dmatchTerminates r Nil | no ¬p = tt
-  dmatchTerminates r (x :: xs) = terminates-fmap (length xs)
-    (dmatch (hiddenInstance(∈Head)) ((d r /d x) , xs))
-    (dmatchTerminates (d r /d x) xs)
+  dmatchTerminates r Nil  with matchEpsilon r
+  dmatchTerminates r Nil  | yes p  = tt
+  dmatchTerminates r Nil  | no ¬p  = tt
+  dmatchTerminates r (x :: xs)     = terminates-fmap (length xs)
+                                       (dmatch (hiddenInstance(∈Head)) ((d r /d x) , xs))
+                                       (dmatchTerminates (d r /d x) xs)
 \end{code}
 %if style == newcode
 \begin{code}
@@ -989,17 +1009,21 @@ which we rewrite using the associativity monad law in a lemma called |terminates
 \end{code}
 %endif
 
-To show partial correctness of |dmatch|,
-we can use the transitivity of the refinement relation.
-If we apply transitivity, it suffices to show that |dmatch| is a refinement of |match|.
-Our first step is to show that the derivative operator is correct,
-i.e. |d r /d x| matches those strings |xs| such that |r| matches |x :: xs|.
+%TODO: is dit niet een beetje overkill? Accepteert Agda niet dmatch
+% rechtstreeks, zonder general recursion? Hoe verweren we ons tegen
+% zulke kritiek?
+
+To show partial correctness of |dmatch|, we will show that |dmatch| is
+a refinement of |match|. By the transitivity of the refinement
+relation, we can conclude that it also satisfies the specification
+given by our original |Match| relation. The first step is to show that the
+derivative operator is correct, i.e. |d r /d x| matches those strings
+|xs| such that |r| matches |x :: xs|.
 \begin{code}
   derivativeCorrect : (Forall(x xs)) ∀ r -> (Forall(y))
     Match (d r /d x) xs y -> Match r (x :: xs) (integralTree r y)
 \end{code}
-The proof mirrors the definitions of these functions,
-being structured as a case distinction on the regular expression.
+The proof is straightforward by induction on the derivation of type |Match (d r /d x) xs y|.
 %if style == newcode
 \begin{code}
   derivativeCorrect Empty ()
@@ -1017,19 +1041,20 @@ being structured as a case distinction on the regular expression.
 \end{code}
 %endif
 
-Before we can prove the correctness of |dmatch| in terms of |match|, it turns
-out that we also need to describe |match| itself better. The meaning of our
-goal, to show that |match| is refined by |dmatch|, is to prove that the output
-of |dmatch| is a subset of that of |match|. Since |match| makes use of
-|allSplits|, we first prove that all splittings of a string |xs| are in the
-output of |allSplits xs|. This following lemma and |allSplitsSound| together
-show that calling |allSplits xs| is equivalent, under the semantics |wpMatch|, to its
-specification |[[ ⊤ , allSplitsPost xs ]]|.
+% Before we can prove the correctness of |dmatch| in terms of |match|, it turns
+% out that we also need to describe |match| itself better. The meaning of our
+% goal, to show that |match| is refined by |dmatch|, is to prove that the output
+% of |dmatch| is a subset of that of |match|. Since |match| makes use of
+% |allSplits|, we first prove that all splittings of a string |xs| are in the
+% output of |allSplits xs|. This following lemma and |allSplitsSound| together
+% show that calling |allSplits xs| is equivalent, under the semantics |wpMatch|, to its
+% specification |[[ ⊤ , allSplitsPost xs ]]|.
+%if style == newcode
+%Wouter: weer een detail dat ik even weg zou laten
 \begin{code}
   allSplitsComplete : (xs : String) → (wpMatch (allSplits (hiddenInstance(∈Tail ∈Head)) xs)) ⊑ (wpSpec [[ ⊤ , allSplitsPost xs ]])
 \end{code}
-%if style == newcode
-\begin{code}
+\begin{code}  
   allSplitsComplete Nil P H = tt , λ
     { (Nil , .Nil) refl → H }
   allSplitsComplete (x :: xs) P H = tt , λ
@@ -1037,7 +1062,7 @@ specification |[[ ⊤ , allSplitsPost xs ]]|.
     ; ((.x :: ys) , zs) refl → Pair.snd (allSplitsComplete xs (λ {(ys , zs) → P ((x :: ys) , zs)}) (wpFromBind (allSplits (ys ++ zs)) _ (Pair.snd H))) (ys , zs) refl}
 \end{code}
 %endif
-The proof mirrors |allSplits|, performing induction on |xs|.
+% The proof mirrors |allSplits|, performing induction on |xs|.
 
 Using the preceding lemmas, we can prove the partial correctness of |dmatch| by showing it refines |match|:
 % TODO make this wpMatch dmatch ⊑ wpSpec matchSpec ?
@@ -1048,7 +1073,6 @@ Since we need to perform the case distinctions of |match| and of |dmatch|,
 the proof is longer than that of |matchSoundness|.
 Despite the length, most of it consists of performing the case distinction,
 then giving a simple argument for each case.
-Therefore, we omit the proof.
 %if style == newcode
 \begin{code}
   dmatchSound Empty          Nil             P H = tt
@@ -1095,52 +1119,76 @@ Therefore, we omit the proof.
 \end{code}
 %endif
 
-With the proof of |dmatchSound| finished, we can conclude that |dmatch| always returns a correct parse tree, i.e. that |dmatch| is sound.
-However, |dmatch| is \emph{not} complete with respect to the |Match| relation:
-since |dmatch| never makes a nondeterministic choice, it will not return all possible parse trees as specified by |Match|,
-only the first tree that it encounters.
-Still, we can express the property that |dmatch| finds a parse tree if it exists.
-In other words, we will show that if there is a valid parse tree, |dmatch| returns any parse tree (and this is a valid tree by |dmatchSound|).
-To express that |dmatch| returns something, we use a trivially true postcondition,
-and replace the demonic choice of the |ptAll| semantics with the angelic choice of |ptAny|:
+With the proof of |dmatchSound| finished, we can conclude that
+|dmatch| always returns a correct parse tree, i.e. that |dmatch| is
+sound.  However, |dmatch| is not \emph{complete} with respect to the
+|Match| relation: the function |dmatch| never makes a
+non-deterministic choice. It will not return all possible parse trees
+that satisfy the |Match| relation, only the first tree that it
+encounters.  We can, however, prove that |dmatch| will find a parse
+tree if it exists.  To express that |dmatch| returns a result, we use
+a trivially true postcondition; by furthermore replacing the demonic
+choice of the |ptAll| semantics with the angelic choice of |ptAny|, we
+require that |dmatch| \emph{must} return a result:
 \begin{code}
   dmatchComplete : ∀ r xs y → Match r xs y →
     (wp (ptRec matchSpec :: ptAny :: Nil) (dmatch (hiddenInstance(∈Head)) (r , xs))) (λ _ → ⊤)
 \end{code}
-The proof is short, since |dmatch| can only |fail| when it encounters an empty string and a regex that does not match the empty string, contradicting the assumption immediately:
+The proof is short, since |dmatch| can only |fail| when it encounters
+an empty string and a regular expression that does not match the empty
+string, which contradicts the assumption |Match r xs y|:
 \begin{code}
   dmatchComplete r Nil y H with matchEpsilon r
   ... | yes p = tt
   ... | no ¬p = ¬p (_ , H)
   dmatchComplete r (x :: xs) y H y' H' = tt
 \end{code}
-Note that |dmatchComplete| does not show that |dmatch| terminates:
-the semantics for the recursive case assume that |dmatch| always returns some value |y'|.
+% Note that |dmatchComplete| does not guarantee that |dmatch|
+% terminates: the semantics for the recursive case assume that |dmatch|
+%  some value |y'|.
 
-In the proofs of |dmatchSound| and |dmatchComplete|, we demonstrate the power of predicate transformer semantics for effects:
-by separating syntax and semantics, we can easily describe different aspects (soundness and completeness) of the one definition of |dmatch|.
-Since the soundness and completeness result we have proved imply partial correctness, and partial correctness and termination imply total correctness,
-we can conclude that |dmatch| is a totally correct parser for regular languages.
+In the proofs of |dmatchSound| and |dmatchComplete|, we demonstrate
+the power of predicate transformer semantics for effects: by
+separating syntax and semantics, we can easily describe different
+aspects (soundness and completeness) of the one definition of
+|dmatch|.  Since the soundness and completeness result we have proved
+imply partial correctness, and partial correctness and termination
+imply total correctness, we can conclude that |dmatch| is a totally
+correct parser for regular languages.
 
-Note the correspondences of this section with a Functional Pearl by \citet{harper-regex},
-which also uses the parsing of regular languages as an example of principles of functional software development.
-Starting out with defining regular expressions as a data type and the language associated with each expression as an inductive relation,
-both use the relation to implement essentially the same |match| function, which does not terminate.
-In both, the partial correctness proof of |match| uses a specification expressed as a postcondition,
-based on the inductive relation representing the language of a given regular expression.
-Where we use nondeterminism to handle the concatenation operator,
-\citeauthor{harper-regex} uses a continuation-passing parser for control flow.
-Since the continuations take the unparsed remainder of the string,
-they correspond almost directly to the |Parser| effect of the following section.
-Another main difference between our implementation and \citeauthor{harper-regex}'s
-is in the way the non-termination of |match| is resolved.
-\citeauthor{harper-regex} uses the derivative operator to rewrite the expression in a standard form
-which ensures that the |match| function terminates.
-We use the derivative operator to implement a different matcher |dmatch| which is easily proved to be terminating,
-then show that |match|, which we have already proven partially correct, is refined by |dmatch|.
-The final major difference is that \citeauthor{harper-regex} uses manual verification of the program and our work is formally computer-verified.
-Although our development takes more work, the correctness proofs give more certainty than the informal arguments made by \citeauthor{harper-regex}.
-In general, choosing between informal reasoning and formal verification will always be a trade-off between speed and accuracy.
+% TODO Wouter: misschien goed om expliciet te benadrukken hoe
+% refinement van de all/any predicate transformers
+% completeness/soundness garanderen?
+
+Note the correspondences of this section with a Functional Pearl by
+\citet{harper-regex}, which also uses the parsing of regular languages
+as an example of principles of functional software development.
+Starting out with defining regular expressions as a data type and the
+language associated with each expression as an inductive relation,
+both use the relation to implement essentially the same |match|
+function, which does not terminate.  In both, the partial correctness
+proof of |match| uses a specification expressed as a postcondition,
+based on the inductive relation representing the language of a given
+regular expression.  Where we use nondeterminism to handle the
+concatenation operator, \citeauthor{harper-regex} uses a
+continuation-passing parser for control flow.  Since the continuations
+take the unparsed remainder of the string, they correspond almost
+directly to the |Parser| effect of the following section.  Another
+main difference between our implementation and
+\citeauthor{harper-regex}'s is in the way the non-termination of
+|match| is resolved.  \citeauthor{harper-regex} uses the derivative
+operator to rewrite the expression in a standard form which ensures
+that the |match| function terminates.  We use the derivative operator
+to implement a different matcher |dmatch| which is easily proved to be
+terminating, then show that |match|, which we have already proven
+partially correct, is refined by |dmatch|.  The final major difference
+is that \citeauthor{harper-regex} uses manual verification of the
+program and our work is formally computer-verified.  Although our
+development takes more work, the correctness proofs give more
+certainty than the informal arguments made by
+\citeauthor{harper-regex}.  In general, choosing between informal
+reasoning and formal verification will always be a trade-off between
+speed and accuracy.
 
 \section{Parsing as effect} \label{sec:parser}
 %if style == newcode
@@ -1870,6 +1918,9 @@ Similarly, \citet{ooagda} use a coinductive type to represent effectful programs
 These two coinductive constructions carry proofs of productivity, in the form of sized types, in their definitions,
 again mixing syntax and semantics.
 % perhaps also Validating LR(1) Parsers https://link.springer.com/chapter/10.1007/978-3-642-28869-2_20
+
+%%TODO cite draft paper by Joomy Korkut and Dan licata
+%%TODO cite Dijkstra monads work
 
 \subsection{Open issues}
 In the process of this verification, we have solved some open issues in the area of predicate transformer semantics and leave others open.
