@@ -210,10 +210,16 @@
 %format · = "\cdot"
 %format _·_ = "\_\!\cdot\!\_"
 %format (wp (a) (b)) = "\llbracket" b "\rrbracket_{" a "}"
+%format (wp' (a)) = "\llbracket \_ \rrbracket_{" a "}"
+%format wp'' = "\llbracket \_ \rrbracket"
 %format (wpS (a) (b)) = "\llbracket" b "\rrbracket^S_{" a "}"
+%format wpS' = "\llbracket \_ \rrbracket^S"
 %format (wpNondetAll (b)) = "\llbracket" b "\rrbracket_{\text{all}}"
+%format wpNondetAll' = "\llbracket \_ \rrbracket_{\text{all}}"
 %format (wpMatch (b)) = "\llbracket" b "\rrbracket_{\text{match}}"
+%format (wpMatch') = "\llbracket \_ \rrbracket_{\text{match}}"
 %format (wpSpec [[ pre , post ]]) = "\llbracket" pre "," post "\rrbracket_{\text{spec}}"
+%format wpSpec' = "\llbracket \_ , \_ \rrbracket_{\text{spec}}"
 %format (wpFromProd (a) (b)) = "\llbracket" b "\rrbracket_{\text{fromProd}}\ " a
 %format Set₁ = Set
 %else
@@ -239,9 +245,15 @@
 %format hiddenT = ⊤
 %format spec' = spec
 %format (wp a b) = "wp" a b
+%format wp' = "wp"
+%format wp'' = "wp"
 %format (wpMatch b) = "wpMatch" b
+%format wpMatch' = "wpMatch"
 %format (wpNondetAll b) = "wpNondetAll" b
+%format wpNondetAll' = "wpNondetAll"
 %format (wpS a b) = "wpS" a b
+%format wpS' = "wpS"
 %format (wpSpec s) = "wpSpec" s
+%format wpSpec' = "wpSpec"
 %endif
 

@@ -201,8 +201,7 @@ Each semantics will be computed by a fold over the free monad, mapping
 some predicate |P : a -> Set| to a predicate on the result of the free
 monad to a predicate of the entire computation of type |Free (eff C R) a -> Set|.
 \begin{code}
-  (wp) : (implicit(C : Set)) (implicit(R : C -> Set)) (implicit(a : Set)) ((c : C) -> (R c -> Set) -> Set) ->
-    Free (mkSig C R) a -> (a -> Set) -> Set
+  wp'' : (implicit(C : Set)) (implicit(R : C -> Set)) (implicit(a : Set)) ((c : C) -> (R c -> Set) -> Set) -> Free (mkSig C R) a -> (a -> Set) -> Set
   (wp alg (Pure x)) P  = P x
   (wp alg (Op c k)) P  = alg c λ x -> (wp (alg) (k x)) P
 \end{code}
@@ -212,13 +211,13 @@ The type of |alg : (c : C) → (R c → Set) → Set| then becomes |C → (R →
 which is isomorphic to |(R → Set) → (C → Set)|.
 Thus, |alg| has the form of a predicate transformer from postconditions of type
 |R → Set| into preconditions of type |C → Set|.
-% The type of |(wp alg)| under the same isomorphism becomes
+% The type of |(wp' alg)| under the same isomorphism becomes
 % |(a -> Set) -> (Free e a → Set)|.
 
 Two considerations cause us to define the types |alg : (c : C) → (R c → Set) → Set|,
-and analogously |(wp alg) : Free (mkSig C R) a → (a → Set) → Set|.
+and analogously |(wp' alg) : Free (mkSig C R) a → (a → Set) → Set|.
 By having the command as first argument to |alg|, we allow |R| to depend on |C|.
-Moreover, |(wp alg)| computes semantics,
+Moreover, |(wp' alg)| computes semantics,
 so it should take a program |S : Free (mkSig C R) a| as its argument
 and return the semantics of |S|, which is then of type |(a → Set) → Set|.
 
@@ -243,12 +242,12 @@ module NoCombination2 where
 \end{code}
 %endif
 \begin{code}
-  (wpNondetAll) : (Forall(a)) Free Nondet a -> (a -> Set) -> Set
-  wpNondetAll S = wp ptAll S
+  wpNondetAll' : (Forall(a)) Free Nondet a -> (a -> Set) -> Set
+  wpNondetAll S = (wp ptAll S)
 \end{code}
 
 Predicate transformers provide a single semantic domain to relate
-programs and specifications. %cite refinement calculus?
+programs and specifications~\cite{prog-from-spec}.
 Throughout this paper, we will consider specifications consisting of a
 pre- and postcondition:
 \begin{code}
@@ -262,7 +261,7 @@ module Spec where
 Inspired by work on the refinement calculus, we can assign a predicate
 transformer semantics to specifications as follows:
 \begin{code}
-  (wpSpec) : (Forall(a)) Spec a -> (a -> Set) -> Set
+  wpSpec' : (Forall(a)) Spec a -> (a -> Set) -> Set
   wpSpec [[ pre , post ]] P = pre ∧ (∀ o -> post o -> P o)
 \end{code}
 This computes the `weakest precondition' necessary for a specification
@@ -712,9 +711,8 @@ The |Pure| case is identical, and in the |Op| case we can apply the predicate tr
 \end{code}
 %endif
 This results in the following definition of the semantics for combinations of effects.
-%TODO hier ziet wp er een beetje raar uit in de .pdf [[.]] ipv [[_]]...
 \begin{code}
-  (wp) : (Forall(a es)) (pts : PTs es) -> Free es a -> (a -> Set) -> Set
+  wp'' : (Forall(a es)) (pts : PTs es) -> Free es a -> (a -> Set) -> Set
   (wp pts (Pure x))    P  = P x
   (wp pts (Op i c k))  P  = lookupPT pts i c λ x -> (wp pts (k x)) P
 \end{code}
@@ -818,7 +816,7 @@ As discussed, we first need to give the specification for |match| before we can 
   matchSpec : (r,xs : Pair Regex String) -> tree (Pair.fst r,xs) -> Set
   matchSpec (r , xs) ms = Match r xs ms
 
-  (wpMatch) : (Forall(a)) Free (Rec (Pair Regex String) (tree ∘ Pair.fst) :: Nondet :: Nil) a ->
+  wpMatch' : (Forall(a)) Free (Rec (Pair Regex String) (tree ∘ Pair.fst) :: Nondet :: Nil) a ->
     (a -> Set) -> Set
   wpMatch S = (wp (ptRec matchSpec :: ptAll :: Nil) S)
 \end{code}
@@ -1041,7 +1039,7 @@ allowing us to handle the |Parser| effect in |dmatch|.
 \end{code}
 %endif
 Note that |dmatch'| has exactly the type of the previously defined |match|,
-conveniently allowing us to re-use the |wpMatch| semantics.
+conveniently allowing us to re-use the |wpMatch'| semantics.
 
 \section{Proving total correctness} \label{sec:dmatch-correct}
 Since |dmatch| always consumes a character before recursing, the
@@ -1422,14 +1420,14 @@ We define the resulting type of stateful predicate transformers for an effect wi
 \end{code}
 %endif
 If we define |PTSs| and |lookupPTS| analogously to |PTs| and |lookupPT|, 
-we have fond a predicate transformer semantics that incorporates the current state:
+we have found a predicate transformer semantics that incorporates the current state:
 \begin{code}
-  (wpS) : (Forall(s es a)) (pts : PTSs s es) -> Free es a -> (a -> s -> Set) -> s -> Set
+  wpS' : (Forall(s es a)) (pts : PTSs s es) -> Free es a -> (a -> s -> Set) -> s -> Set
   (wpS pts (Pure x)) P = P x
   (wpS pts (Op i c k)) P = lookupPTS pts i c λ x -> (wpS pts (k x)) P
 \end{code}
 
-In this definition for |wpS|, we assume that all effects share access to one mutable variable of type |s|.
+In this definition for |wpS'|, we assume that all effects share access to one mutable variable of type |s|.
 We can allow for more variables by setting |s| to be a product type over the effects.
 With a suitable modification of the predicate transformers,
 we could set it up so that each effect can only modify its own associated variable.
