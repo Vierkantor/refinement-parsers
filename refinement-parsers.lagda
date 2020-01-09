@@ -23,7 +23,7 @@ P ⊆ Q = ∀ x -> P x -> Q x
 
 \begin{document}
 
-\title{A predicate transformer semantics of parser combinators}
+\title{A predicate transformer semantics of parsing}
 \def\titlerunning{A predicate transformer semantics of parser combinators}
 \def\authorrunning{Tim Baanen and Wouter Swierstra}
 % Of misschien iets als:
@@ -38,6 +38,12 @@ P ⊆ Q = ∀ x -> P x -> Q x
 %\email{\{t.baanen@@vu.nl,w.s.swierstra@@uu.nl\}}}
 %
 \maketitle              % typeset the header of the contribution
+
+\section{Abstract}
+This paper describes how predicate transformer semantics can be used to verify parsers in a functional programming language.
+Previous work on semantics for a single effect is extended to the combinations of effects used in parsing: non-determinism, general recursion and mutable state.
+The modular setup allows separation of program syntax, correctness proofs and termination proofs.
+The semantics are illustrated by the formally verified development of a parser for regular expressions.
 
 \section{Introduction}
 \label{sec:intro}
@@ -1328,6 +1334,7 @@ the pessimist can conclude that the real hard work will be required as soon as w
 
 \printbibliography
 
+\iffalse
 \appendix
 
 \section{Parsing as effect} \label{sec:parser}
@@ -2033,7 +2040,7 @@ It calls |parseStepRec| since the parser only starts consuming characters after 
 \end{code}
 As for partial correctness, we obtain the proof of termination by applying |filterStep| to the subset of |prods| consisting of |prods| itself.
 
-\printbibliography
+\fi
 
 \end{document}
 
