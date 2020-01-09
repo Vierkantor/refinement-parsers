@@ -1,4 +1,6 @@
-\documentclass{eptcs}
+\documentclass[submission,copyright,creativecommons]{eptcs}
+
+\providecommand{\event}{MSFP 2020}
 
 \usepackage[style=alphabetic,natbib=true]{biblatex}
 \addbibresource{handlers.bib}
@@ -100,7 +102,7 @@ In particular, the sections of this paper make the following contributions:
 \end{itemize}
 
 The goal of our work is not the regular expression parsers we write, or even
-its correctness proof, both of which have been done before. % TODO: cite?
+their correctness proofs, both of which have been done before. % TODO: cite?
 Instead, we discuss the steps of writing and verifying the parser to illustrate
 the process of reasoning with predicate transformers and algebraic effects.
 We work in the spirit of a Functional Pearl by \citet{harper-regex},
@@ -1273,37 +1275,46 @@ correct parser for regular languages.
 
 \subsection{Related work}
 In this paper, we have described a representation of parsers and shown how to perform verification of parsers in this representation.
-We will discuss how our work relates to other parser verifications.
-The main body, on regular expressions, has a similar structure to a Functional Pearl by \citet{harper-regex}.
-The main difference is that our work is based on formal verification using Agda,
-while \citeauthor{harper-regex} uses manual and informal reasoning.
-The appendices on context-free grammars could be compared to work by \citet{total-parser-combinators, firsov-certification-context-free-grammars}.
-Here the difference, apart from a different parsing algorithm, can be found in how (non)termination is dealt with.
-We opt for a strong separation of syntax and semantics,
+For imperative programs, the refinement calculus provides a verification methodology for imperative programs~\cite{prog-from-spec}.
+The refinement calculus inspired our use of predicate transformer semantics and the refinement relation to verify functional programs~\cite{pt-semantics-for-effects}.
+The \emph{Dijkstra monad} introduced in the language F$\star$ uses predicate transformer semantics for verifying effectful programs
+by collecting the proof obligations for verification~\cite{dijkstra-monad, dijkstra-monads-for-free, dijkstra-monads-for-all}.
+As a result, the semantics of a program written in the Dijkstra monad are fixed.
+The separation of syntax and semantics in our approach allows for verification to be performed in several steps,
+such as we did for |dmatchTerminates|, |dmatchSound| and |dmatchComplete|.
+
+Our running example of the regular expression parser parallels the development of a regular expression parser in a Functional Pearl by \citet{harper-regex}.
+Where \citeauthor{harper-regex} uses manual checking and informal reasoning,
+our work is based on formal verification using Agda.
+More recently, \citet{intrinsic-verification-regex} adapted the Functional Pearl to Agda.
+A direct translation of \citeauthor{harper-regex}'s definitions is not possible:
+they are rejected by Agda's termination checker because they are not structurally recursive.
+Thus, \citeauthor{intrinsic-verification-regex} must modify the definitions to make them acceptable to Agda.
+In contrast, ay adding general recursion as an effect allows us to implement the Kleene star without modifying existing code.
+
+Formally verified parsers for a more general class of languages have been developed before;
+\citet{total-parser-combinators, simple-functional-cfg-parsing, firsov-certification-context-free-grammars} did this in a functional style.
+In these developments, semantics are defined specialized to the domain of parsing,
+while our semantics arise from combining a generic set of effect semantics.
+Another difference between our work and the work of \citet{total-parser-combinators, firsov-certification-context-free-grammars}
+is that we deal with termination syntactically, either by incorporating delay and force operators in the grammar,
+or explicitly passing around a proof of termination in the definition of the parser.
+The modularity of our setup results in a strong separation of syntax and semantics,
 using the |Rec| effect to give the syntax of programs regardless of termination,
 later proving the semantic property of termination.
-In contrast, \citeauthor{total-parser-combinators, firsov-certification-context-free-grammars}
-deal with termination syntactically, either by incorporating delay and force operators in the grammar,
-or explicitly passing around a proof of termination in the definition of the parser.
 
-A different representation of languages used in verification is the \emph{coinductive trie}~\cite{coinductive-trie}.
-The approach of \citeauthor{coinductive-trie} is in the opposite direction to ours:
-in order to verify constructions on automata, the language they accept is mapped to a trie,
-then this trie is compared to the trie that we get by applying the corresponding constructions on tries.
-Similarly, \citet{ooagda} use a coinductive type to represent effectful programs with arbitrarily large input.
-These two coinductive constructions carry proofs of productivity, in the form of sized types, in their definitions,
-again mixing syntax and semantics.
-% perhaps also Validating LR(1) Parsers https://link.springer.com/chapter/10.1007/978-3-642-28869-2_20
-
-%%TODO cite draft paper by Joomy Korkut and Dan licata
-%%TODO cite Dijkstra monads work
+%Our development of |dmatch| uses a combination of |Parser| and |Rec| effects to handle recursion in regular expressions.
+%Alternate solutions include representing the language in a coinductive type.
+%Coinductive types were applied to the domain of parsing in the form of a \emph{coinductive trie}~\cite{coinductive-trie}.
+%Similarly, \citet{ooagda} use a coinductive type to represent effectful programs with arbitrarily large input.
+%These two coinductive constructions carry proofs of productivity, in the form of sized types, in their definitions,
+%again mixing syntax and semantics.
 
 \subsection{Open issues}
-In the process of this verification, we have solved some open issues in the area of predicate transformer semantics and leave others open.
-\citet{pt-semantics-for-effects} mention two avenues of further work that our work makes advances on: the semantics for combinations of effects
-and the verification of non-trivial programs using algebraic effects.
-Still, we chose to verify parsers with applying predicate transformers to them in the back of our mind,
-so the goal of verifying a practical program remains a step further.
+This paper adds to our previous results \cite{pt-semantics-for-effects} by verifying a non-trivial program.
+In the process, we give semantics for combinations of effects and show that effect handlers can interact usefully with predicate transformers.
+Still, the choice to verify parsers was made expecting that predicate transformer semantics should apply easily to them.
+Whether we can do the same verification for practical programs is not yet answerable with an unanimous ``yes''.
 % Perhaps a translation of ``er valt iets af te dingen aan het idee dat we een praktisch programma verifiëren'' is more apt.
 
 We have described how coproducts allow for combinations of effect syntax and semantics,
@@ -1312,12 +1323,7 @@ The interaction between different effects means
 applying handlers in a different order can result in different semantics.
 We assign predicate transformer semantics to a combination of effects all at once,
 specifying their interaction explicitly.
-Can we assign semantics to effects such that they interact in a similar way as handlers do?
-
-Another issue that remains is dealing with other representations of the free monad.
-The |Free| datatype could be replaced with more efficient versions to run practical computations~\cite{extensible-effects,freer-monads}.
-We expect that predicate transformer semantics, although arising from a fold on the |Free| monad,
-will generalize without problems to these more advanced representations.
+Can we assign semantics to effects one by one, such that they interact in a similar way as handlers do?
 
 \subsection{Conclusions}
 In conclusion, the two distinguishing features of our work are formality and modularity.
@@ -1328,7 +1334,8 @@ and partial correctness from termination.
 This results in verification proofs that do not need to carry around many goals,
 allowing most of them to consist of unfolding the definition and filling in the obvious terms.
 
-We should also note that the engineering effort expected by \citeauthor{pt-semantics-for-effects} has not been needed for our paper.
+We note the absence of any large engineering effort needed for our development,
+as we expected before writing this paper~\cite{pt-semantics-for-effects}.
 The optimist can conclude that the elegance of our framework caused it to prevent the feared level of complication;
 the pessimist can conclude that the real hard work will be required as soon as we encounter a real-world application.
 
