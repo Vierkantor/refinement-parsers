@@ -985,14 +985,20 @@ The code for the parser, |dmatch|, is now only a few lines long. When
 the input string is empty, we check that the expression matches the
 empty string; for a non-empty string we use the derivative to
 match the first character and recurse:
+%if style == newcode
+\begin{code}
+-- Dependent If-Then-Else syntax inspired by Lean
+  dite : ∀ {l k} {P : Set l} {a : Set k} → Dec P → (P → a) → (¬ P → a) → a
+  dite P t f = if' P then t else f
+  syntax dite P (λ p → t) f = if p <- P then t else f
+\end{code}
+%endif
 \begin{code}
   dmatch : (Forall(es)) ⦃ iP : Parser ∈ es ⦄ ⦃ iND : Nondet ∈ es ⦄  -> (RecArr Regex es tree)
   dmatch r = symbol >>= maybe
     (λ x -> integralTree r <$> call (hiddenInstance(∈Head)) (d r /d x))
-    (if' matchEpsilon r then (λ p -> Pure (Sigma.fst p)) else (hiddenConst(fail)))
+    (if p <- matchEpsilon r then (Pure (Sigma.fst p)) else (hiddenConst(fail)))
 \end{code}
-% 
-    TODO: can we use syntax like `if p : matchEpsilon r then Pure (Sigma.fst p) else fail' ?
 Here, |maybe f y| takes a |Maybe| value and applies |f| to the value in |just|, or returns |y| if it is |nothing|.
 
 Adding the new effect |Parser| to our repertoire also requires specifying its semantics.
