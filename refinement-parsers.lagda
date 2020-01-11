@@ -750,11 +750,8 @@ Since |match| makes use of |allSplits|, we also rewrite that function to use a c
 The types become:
 \begin{code}
   allSplits : (Forall(a es)) ⦃ iND :  Nondet ∈ es ⦄ -> List a -> Free es (List a × List a)
-  match : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ → (RecArr (Regex × String) es (tree ∘ Pair.fst))
+  match : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ → (RecArrBinding (x) (Regex × String) es (tree (Pair.fst x)))
 \end{code}
-% TODO - we zouden er voor kunnen kiezen om dit weg te laten en alleen
-% kort te benoemen dat we de types iets moeten generaliseren.
-
 % TODO - wat doet de Pair.fst hier ook al weer? (Na even puzzelen kwam
 % ik er wel achter -- je wilt aan de regexp in de input komen, maar
 % dat is wat verwarrend aangezien de kromme pijl een beetje
@@ -1024,9 +1021,10 @@ We give denotational semantics, in the form of an \emph{effect handler} for |Par
 \end{code}
 The function |handleRec| folds a given handler over a recursive definition,
 allowing us to handle the |Parser| effect in |dmatch|.
+% TODO: fix overfull hbox
 \begin{code}
-  handleRec : (Forall(C R es s)) ((c : C) -> s -> Free es (R c × s)) -> (Forall(a b)) (RecArr a (mkSig C R :: es) b) -> (RecArr (a × s) es (b ∘ Pair.fst))
-  dmatch' : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ → (RecArr (Regex × String) es (tree ∘ Pair.fst))
+  handleRec : (Forall(C R es s)) ((c : C) -> s -> Free es (R c × s)) -> (Forall(a b)) (RecArr a (mkSig C R :: es) b) -> (RecArrBinding (x) (a × s) es (b (Pair.fst x)))
+  dmatch' : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ → (RecArrBinding (x) (Regex × String) es (tree (Pair.fst x)))
   dmatch' = handleRec hParser (dmatch (hiddenInstance(∈Head)))
 \end{code}
 %if style == newcode
@@ -1101,25 +1099,23 @@ showing that we can mix denotational and predicate transformer semantics.
 The proof goes by induction on this string.
 Unfolding the recursive |call| gives |integralTree r <$> dmatch' (d r /d x , xs)|,
 which we rewrite using the associativity monad law in a lemma called |terminates-fmap|.
-% TODO ik snap deze 'rewrite' niet zo goed -- misschien goed om het
-% type van terminates-fmap in een where clause te geven?
 \begin{code}
   dmatchTerminates : (r : Regex) (xs : String) →
     terminates-in (ptAll :: Nil) (dmatch' (hiddenInstance(∈Head)) ) (dmatch' (hiddenInstance(∈Head)) (r , xs)) (length xs)
   dmatchTerminates r Nil with matchEpsilon r
   dmatchTerminates r Nil | yes p  = tt
   dmatchTerminates r Nil | no ¬p  = tt
-  dmatchTerminates r (x :: xs) = terminates-fmap (length xs)
-    (dmatch' (hiddenInstance(∈Head)) ((d r /d x) , xs))
+  dmatchTerminates r (x :: xs) = terminates-fmap (length xs) (dmatch' (hiddenInstance(∈Head)) ((d r /d x) , xs))
     (dmatchTerminates (d r /d x) xs)
+    where
+    terminates-fmap : (Forall(C R es a b pts f)) (implicit(g : a → b)) (n : Nat) (S : Free (mkSig C R :: es) a) →
+      terminates-in pts f S n → terminates-in pts f (g <$> S) n
 \end{code}
 %if style == newcode
 \begin{code}
-    where
     assoc : ∀ {es a b c} (S : Free es a) (f : a → Free es b) (g : b → Free es c) → (S >>= f) >>= g == S >>= (λ x → f x >>= g)
     assoc (Pure x) f g = refl
     assoc (Op i c k) f g = cong (Op i c) (extensionality λ x → assoc (k x) f g)
-    terminates-fmap : ∀ {C R es a b pts f} {g : a → b} n (S : Free (mkSig C R :: es) a) → terminates-in pts f S n → terminates-in pts f (S >>= (Pure ∘ g)) n
     terminates-fmap n (Pure x) H = H
     terminates-fmap {pts = pts} {f} {g} (Succ n) (Op ∈Head c k) H = subst (λ S → terminates-in pts f S n) (assoc (f c) k (Pure ∘ g)) (terminates-fmap n (f c >>= k) H)
     terminates-fmap {pts = pts} n (Op (∈Tail i) c k) H = lookupMono pts i c _ _ (λ x → terminates-fmap n (k x)) H

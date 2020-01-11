@@ -88,6 +88,7 @@
 %format _~>_ = "\_\looparrowright\_"
 %format RecArr' = "\_\overset{\_}{\looparrowright}\_"
 %format (RecArr (a) (b) (c)) = a "\overset{" b "}{\looparrowright}" c
+%format (RecArrBinding (x) (a) (b) (c)) = (x ":" a) "\overset{" b "}{\looparrowright}" c
 %format Nat = "\N"
 %format λ = "\lambda"
 %format ∀ = "\forall"
@@ -240,6 +241,7 @@
 %format _trir_ = _◃_
 %format trir = ◃
 %format RecArr = "RecArr"
+%format (RecArrBinding (x) (a) (b) (c)) = ("RecArr" (a) (b) " λ " (x) " → " (c))
 %format RecArr' = "RecArr"
 %format equivStep = ≡-step
 %format hiddenT = ⊤
