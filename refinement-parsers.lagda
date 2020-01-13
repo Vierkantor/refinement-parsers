@@ -51,9 +51,7 @@ The semantics are illustrated by the formally verified development of a parser f
 \label{sec:intro}
 
 There is a significant body of work on parsing using combinators
-% TODO Check het paper van Nils anders danielsson voor een veeeel langere lijst
-% met referenties over parser combinators
-in functional programming languages~\cite{hutton, swierstra-duponcheel, list-of-successes,others?},. 
+in functional programming languages~\cite[among many others]{list-of-successes, hutton, functional-parsers, swierstra-duponcheel, leijen2001parsec, efficient-combinator-parsers, parser-combinators-for-left-recursive, parsing-with-derivatives}. 
 Yet how can we ensure that these parsers are correct? There is notably
 less work that attempts to  answer this
 question~\cite{total-parser-combinators, firsov-certification-context-free-grammars}.
@@ -63,7 +61,7 @@ use a variety of effects: state to store the string being parsed;
 non-determinism to handle backtracking; and general recursion to deal
 with recursive grammars. Proof techniques, such as equational
 reasoning, that are commonly used when reasoning about pure functional programs, are less
-suitable when verifying effectful programs.%TODO Cite Fulgur and hutton? just do it?
+suitable when verifying effectful programs~\cite{just-do-it,hutton2008reasoning}.
 
 In this paper, we explore a novel approach, drawing inspiration from recent
 work on algebraic effects~\cite{eff, effect-handlers-in-scope,
@@ -102,7 +100,7 @@ In particular, the sections of this paper make the following contributions:
 \end{itemize}
 
 The goal of our work is not the regular expression parsers we write, or even
-their correctness proofs, both of which have been done before. % TODO: cite?
+their correctness proofs, both of which have been done before~\cite{harper-regex, intrinsic-verification-regex}.
 Instead, we discuss the steps of writing and verifying the parser to illustrate
 the process of reasoning with predicate transformers and algebraic effects.
 We work in the spirit of a Functional Pearl by \citet{harper-regex},
@@ -127,7 +125,8 @@ The final major difference is that \citeauthor{harper-regex} uses manual verific
 
 All the programs and proofs in this paper are written in the dependently typed language Agda~\cite{agda-thesis},
 and are thus formally verified.
-%TODO link?
+The full source code, including lemmas we have chosen to omit for sake of readability,
+is available at \url{https://github.com/Vierkantor/refinement-parsers}.
 Apart from postulating function extensionality,
 we remain entirely within Agda's default theory.
 
@@ -623,8 +622,7 @@ since all the definitions that we have seen previously can be readily adapted to
 \end{code}
 %endif
 
-Most of this bookkeeping involved with different effects can be inferred using Agda's \emph{instance arguments}.
-%\todo{citation devriese ICFP geloof ik...}
+Most of this bookkeeping involved with different effects can be inferred using Agda's \emph{instance arguments}~\cite{instance-arguments-agda}.
 Instance arguments, marked using the double curly braces |⦃ ^^ ⦄|, are
 automatically filled in by Agda, provided a unique value of the
 required type can be found. For example, we can define the generic
@@ -691,9 +689,8 @@ The record type |PT| not only contains a predicate transformer |pt|,
 but also a proof that this predicate transformer is
 \emph{monotone}. Several lemmas throughout this paper, such as the
 |terminates-fmap| lemma below, rely on the monotonicity of the
-underlying predicate transformers.
-
-
+underlying predicate transformers;
+for each semantics we present the proof of monotonicity is immediate.
 
 Given a such a list of predicate transformers,
 defining the semantics of an effectful program is a straightforward generalization of the previously defined semantics.
@@ -731,9 +728,12 @@ function adheres to this invariant or not:
 \begin{code}
   ptRec : (Forall(I O)) ((i : I) -> O i -> Set) -> PT (Rec I O)
   PT.pt    (ptRec R) i P                 = ∀ o -> R i o -> P o
+\end{code}
+%if style == newcode
+\begin{code}
   PT.mono  (ptRec R) c P P' imp asm o h  = imp _ (asm _ h)
 \end{code}
-%TODO Mono case weglaten?
+%endif
 As we shall see shortly, when revisiting the |match| function, the
 |Match| relation defined previously will fulfill the role of this
 `invariant.'
@@ -752,10 +752,6 @@ The types become:
   allSplits : (Forall(a es)) ⦃ iND :  Nondet ∈ es ⦄ -> List a -> Free es (List a × List a)
   match : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ → (RecArrBinding (x) (Regex × String) es (tree (Pair.fst x)))
 \end{code}
-% TODO - wat doet de Pair.fst hier ook al weer? (Na even puzzelen kwam
-% ik er wel achter -- je wilt aan de regexp in de input komen, maar
-% dat is wat verwarrend aangezien de kromme pijl een beetje
-% suggerereert dat er links en rechts iets van type Set staat.
 
 %if style == newcode
 \begin{code}
@@ -997,8 +993,13 @@ match the first character and recurse:
     (if p <- matchEpsilon r then (Pure (Sigma.fst p)) else (hiddenConst(fail)))
 \end{code}
 Here, |maybe f y| takes a |Maybe| value and applies |f| to the value in |just|, or returns |y| if it is |nothing|.
+Although the parser is easily seen to terminate in the intended semantics
+(since a character is removed from the input string between each recursive
+call), a semantics where the call to |symbol| always returns |just| a character
+causes |dmatch| to diverge.  That termination of |dmatch| is not a syntactical
+property, is reflected by the |Rec| effect in its definition.
 
-Adding the new effect |Parser| to our repertoire also requires specifying its semantics.
+Adding the new effect |Parser| to our repertoire thus requires specifying its semantics.
 We gave the effects |Nondet| and |Rec| predicate transformer semantics in the form of a |PT| record.
 After introducing the |Parser| effect, the pre- and postcondition become more complicated:
 not only do they reference the `pure' arguments and return values (here of type |r : Regex| and |Tree r| respectively),
@@ -1013,7 +1014,7 @@ With these augmented predicates, the predicate transformer semantics for the |Pa
 In this article, we want to demonstrate the modularity of predicate transformer semantics.
 To illustrate how the semantics mesh well with other forms of semantics,
 we do \emph{not} use |ptParser| as semantics for |Parser| in the remainder.
-We give denotational semantics, in the form of an \emph{effect handler} for |Parser|:% TODO: cite a good source for effect handlers
+We give denotational semantics, in the form of an \emph{effect handler} for |Parser|~\cite{algebraic-effect-handlers,effect-handlers-in-scope}:
 \begin{code}
   hParser : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ -> (c : CParser) -> String -> Free es (RParser c × String)
   hParser Symbol Nil        = Pure (nothing  , Nil)
@@ -1021,9 +1022,9 @@ We give denotational semantics, in the form of an \emph{effect handler} for |Par
 \end{code}
 The function |handleRec| folds a given handler over a recursive definition,
 allowing us to handle the |Parser| effect in |dmatch|.
-% TODO: fix overfull hbox
 \begin{code}
-  handleRec : (Forall(C R es s)) ((c : C) -> s -> Free es (R c × s)) -> (Forall(a b)) (RecArr a (mkSig C R :: es) b) -> (RecArrBinding (x) (a × s) es (b (Pair.fst x)))
+  handleRec : (Forall(C R es s)) ((c : C) -> s -> Free es (R c × s)) ->
+    (Forall(a b)) (RecArr a (mkSig C R :: es) b) -> (RecArrBinding (x) (a × s) es (b (Pair.fst x)))
   dmatch' : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ → (RecArrBinding (x) (Regex × String) es (tree (Pair.fst x)))
   dmatch' = handleRec hParser (dmatch (hiddenInstance(∈Head)))
 \end{code}
@@ -1121,10 +1122,6 @@ which we rewrite using the associativity monad law in a lemma called |terminates
     terminates-fmap {pts = pts} n (Op (∈Tail i) c k) H = lookupMono pts i c _ _ (λ x → terminates-fmap n (k x)) H
 \end{code}
 %endif
-
-%TODO: is dit niet een beetje overkill? Accepteert Agda niet dmatch
-% rechtstreeks, zonder general recursion? Hoe verweren we ons tegen
-% zulke kritiek?
 
 To show partial correctness of |dmatch|, we will show that |dmatch| is
 a refinement of |match|. By the transitivity of the refinement
