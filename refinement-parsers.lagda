@@ -1123,12 +1123,21 @@ which we rewrite using the associativity monad law in a lemma called |terminates
 \end{code}
 %endif
 
-To show partial correctness of |dmatch|, we will show that |dmatch| is
-a refinement of |match|. By the transitivity of the refinement
-relation, we can conclude that it also satisfies the specification
-given by our original |Match| relation. The first step is to show that the
-derivative operator is correct, i.e. |d r /d x| matches those strings
-|xs| such that |r| matches |x :: xs|.
+Apart from termination, correctness consists of soundness and completeness: the
+parse trees returned by |dmatch| should be satisfy the specification given by
+the original |Match| relation, and for any string that matches the regular
+expression, |dmatch| should return a parse tree.  In the |ptAll| semantics, a
+nondeterministic program |S| is refined by |T| if and only if the output values
+of |T| are a subset of the output values of |S|; conversely |S| is refined by
+|T| in the |ptAny| semantics if and only if the output values of |S| are a
+subset of the output values of |T|. These properties allow us to express
+program correctness in terms of refinement.
+
+We can show soundness of |dmatch| by proving it refines |match|.  By the
+transitivity of the refinement relation, we can conclude that it also satisfies
+the specification given by our original |Match| relation. The first step is to
+show that the derivative operator is correct, i.e. |d r /d x| matches those
+strings |xs| such that |r| matches |x :: xs|.
 \begin{code}
   derivativeCorrect : (Forall(x xs)) ∀ r -> (Forall(y)) Match (d r /d x) xs y -> Match r (x :: xs) (integralTree r y)
 \end{code}
@@ -1172,13 +1181,14 @@ The proof is straightforward by induction on the derivation of type |Match (d r 
 \end{code}
 %endif
 % The proof mirrors |allSplits|, performing induction on |xs|.
-Using the preceding lemmas, we can prove the partial correctness of |dmatch| by showing it refines |match|:
+Using the preceding lemmas, we can prove the partial correctness of |dmatch|.
+% by showing it refines |match|.
 \begin{code}
   dmatchSound : ∀ r xs -> (wpMatch (match (hiddenInstance(∈Head)) (r , xs))) ⊑ (wpMatch (dmatch' (hiddenInstance(∈Head)) (r , xs)))
 \end{code}
 Since we need to perform the case distinctions of |match| and of |dmatch|,
 the proof is longer than that of |matchSoundness|.
-Despite the length, most of it consists of performing the case distinction,
+Despite the length, most of it consists of this case distinction,
 then giving a simple argument for each case.
 %if style == newcode
 \begin{code}
@@ -1226,17 +1236,18 @@ then giving a simple argument for each case.
 \end{code}
 %endif
 
-With the proof of |dmatchSound| finished, we can conclude that
-|dmatch| always returns a correct parse tree, i.e. that |dmatch| is
-sound.  However, |dmatch| is not \emph{complete} with respect to the
-|Match| relation: the function |dmatch| never makes a
-non-deterministic choice. It will not return all possible parse trees
-that satisfy the |Match| relation, only the first tree that it
-encounters.  We can, however, prove that |dmatch| will find a parse
-tree if it exists.  To express that |dmatch| returns a result, we use
-a trivially true postcondition; by furthermore replacing the demonic
-choice of the |ptAll| semantics with the angelic choice of |ptAny|, we
-require that |dmatch| \emph{must} return a result:
+%With the proof of |dmatchSound| finished, we can conclude that
+%|dmatch| always returns a correct parse tree, i.e. that |dmatch| is
+%sound.
+Although we successfully proved |dmatch| is sound with respect to the |Match|
+relation, it is not \emph{complete}: the function |dmatch| never makes a
+non-deterministic choice. It will not return all possible parse trees that
+satisfy the |Match| relation, only the first tree that it encounters.  We can,
+however, prove that |dmatch| will find a parse tree if it exists.  To express
+that |dmatch| returns any result at all, we use a trivially true postcondition;
+by furthermore replacing the demonic choice of the |ptAll| semantics with the
+angelic choice of |ptAny|, we require that |dmatch| \emph{must} return a
+result:
 \begin{code}
   dmatchComplete : ∀ r xs y → Match r xs y →
     (wp (ptRec matchSpec :: ptAny :: Nil) (dmatch' (hiddenInstance(∈Head)) (r , xs))) (λ _ → ⊤)
