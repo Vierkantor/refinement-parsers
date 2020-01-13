@@ -2,7 +2,7 @@
 
 \providecommand{\event}{MSFP 2020}
 
-\usepackage[style=alphabetic,natbib=true]{biblatex}
+\usepackage[style=numeric,natbib=true]{biblatex}
 \addbibresource{handlers.bib}
 
 %include agda.fmt
