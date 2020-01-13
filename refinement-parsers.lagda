@@ -644,8 +644,8 @@ provided we can show that the list |es| contains the |NonDet| and
 For convenience of notation, we introduce the |(RecArr _ es _)| notation for the type of generally recursive functions with effects in |es|,
 i.e. Kleisli arrows into |Free (Rec _ _ :: es)|.
 \begin{code}
-  RecArr' : (C : Set) (es : List Sig) (R : C → Set) → Set₁
-  (RecArr C es R) = (c : C) -> Free (mkSig C R :: es) (R c)
+  RecArr' : (I : Set) (es : List Sig) (O : I → Set) → Set₁
+  (RecArr I es O) = (i : I) -> Free (Rec I O :: es) (O i)
 \end{code}
 %if style == newcode
 \begin{code}
@@ -1041,13 +1041,14 @@ Note that |dmatch'| has exactly the type of the previously defined |match|,
 conveniently allowing us to re-use the |wpMatch'| semantics.
 
 \section{Proving total correctness} \label{sec:dmatch-correct}
-Since |dmatch| always consumes a character before recursing, the
-number of recursive calls is bounded by the length of the input string
-As a result, we `handle' the recursive effect by unfolding the
-definition a bounded number of times. In the remainder of this
-section, we will make this argument precise and relate the |dmatch|
-function above to the |match| function defined previously.
-
+We finish the development process by proving that |dmatch| is correct.
+The first step in this proof is that |dmatch| always terminates.
+%Since |dmatch| always consumes a character before recursing, the
+%number of recursive calls is bounded by the length of the input string.
+%As a result, we can handle the recursive effect by unfolding the
+%definition a bounded number of times. In the remainder of this
+%section, we will make this argument precise and relate the |dmatch|
+%function above to the |match| function defined previously.
 % Intuitively, this means that |dmatch| terminates on all input.  If we
 % are going to give a formal proof of termination, we should first
 % determine the correct formalization of this notion.  For that, we need
@@ -1065,20 +1066,18 @@ function above to the |match| function defined previously.
 %
 % Wouter: ik vond de discussie hierboven wat verwarrend. Ik heb
 % geprobeerd om het te integreren met de uitleg hieronder.
-
 % Intuitively, we could say that a definition |S| calling |f| terminates
 % if we make the unfolded definition into a |Partial| computation by replacing |call| with |fail|,
 % the definition terminates if the |Partial| computation still works the same, i.e. it refines |S|.
 % However, this mixes the concepts of correctness and termination.
-
 % We want to see that the |Partial| computation gives some output,
 % without caring about which output this is.
-To ensure the termination of a recursive computation, we define the
-following predicate, |terminates-in|. Given any recursive computation
-|f : (RecArr C es R)|, we check whether the computation requires no
+To express the termination of a recursive computation, we define the following
+predicate, |terminates-in|. Given a program |S| that calls the recursive
+function |f : (RecArr I es O)|, we check whether the computation requires no
 more than a fixed number of steps to terminate:
 \begin{code}
-  terminates-in : (Forall(C R es a)) (pts : PTs es) (f : (RecArr C es R)) (S : Free (mkSig C R :: es) a) → Nat → Set
+  terminates-in : (Forall(I O es a)) (pts : PTs es) (f : (RecArr I es O)) (S : Free (Rec I O :: es) a) → Nat → Set
   terminates-in pts f (Pure x)            n         = ⊤
   terminates-in pts f (Op ∈Head c k)      Zero      = ⊥
   terminates-in pts f (Op ∈Head c k)      (Succ n)  = terminates-in pts f (f c >>= k) n
@@ -1103,7 +1102,7 @@ which we rewrite using the associativity monad law in a lemma called |terminates
   dmatchTerminates r (x :: xs) = terminates-fmap (length xs) (dmatch' (hiddenInstance(∈Head)) ((d r /d x) , xs))
     (dmatchTerminates (d r /d x) xs)
     where
-    terminates-fmap : (Forall(C R es a b pts f)) {g : a → b} (n : Nat) (S : Free (mkSig C R :: es) a) →
+    terminates-fmap : (Forall(I O es a b pts)) {f : (RecArr I es O)} {g : a → b} (n : Nat) (S : Free (Rec I O :: es) a) →
       terminates-in pts f S n → terminates-in pts f (g <$> S) n
 \end{code}
 %if style == newcode
