@@ -28,8 +28,8 @@ P ⊆ Q = ∀ x -> P x -> Q x
 
 \begin{document}
 
-\title{A predicate transformer semantics of parsing}
-\def\titlerunning{A predicate transformer semantics of parser combinators}
+\title{Combining predicate transformer semantics for effects:\\a case study in parsing regular languages}
+\def\titlerunning{Combining predicate transformer semantics for effects}
 \def\authorrunning{Tim Baanen and Wouter Swierstra}
 % Of misschien iets als:
 % A predicate transformer semantics for parsing

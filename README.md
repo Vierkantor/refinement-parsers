@@ -1,6 +1,6 @@
-# A predicate transformer semantics of parsing
+# Combining predicate transformer semantics for effects: a case study in parsing regular languages
 
-This repository contains the full source code for the paper "A predicate transformer semantics of parsing",
+This repository contains the full source code for the paper "Combining predicate transformer semantics for effects: a case study in parsing regular languages",
 including lemmas we have omitted from the print version for sake of readability.
 
 The main source file is `refinement-parsers.lagda`; `lhs2TeX` is used to extract the Agda code for verification and the LaTeX code for compiling the paper.
