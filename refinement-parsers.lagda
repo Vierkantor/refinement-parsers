@@ -41,11 +41,16 @@ P ⊆ Q = ∀ x -> P x -> Q x
 %
 \maketitle              % typeset the header of the contribution
 
-\section{Abstract}
-This paper describes how predicate transformer semantics can be used to verify parsers in a functional programming language.
-Previous work on semantics for a single effect is extended to the combinations of effects used in parsing: non-determinism, general recursion and mutable state.
-The modular setup allows separation of program syntax, correctness proofs and termination proofs.
-The semantics are illustrated by the formally verified development of a parser for regular expressions.
+\begin{abstract}
+This paper describes how to verify a parser for regular expressions in a functional programming language using predicate transformer semantics for a variety of effects.
+%
+Where our previous work in this area focussed on the semantics for a
+single effect, parsing requires a combination of effects:
+non-determinism, general recursion and mutable state.  Reasoning about
+such combinations of effects is notoriously difficult, yet our
+approach using predicate transformers enables the careful separation
+of program syntax, correctness proofs and termination proofs.
+\end{abstract}
 
 \section{Introduction}
 \label{sec:intro}
@@ -70,17 +75,18 @@ uniformly using \emph{predicate transformers}~\cite{pt-semantics-for-effects}.
 We extend our previous work that uses predicate transformer semantics to reason
 about a single effect, to handle the combinations of effects used by parsers.
 Our semantics is modular, meaning we can introduce new effects, semantics and
-properties to be verified at the point they are needed, without having to
+specifications when they are needed, without having to
 rework the previous definitions.  In particular, our careful treatment of
-general recursion lets us separate the partial correctness of the combinators
-from their termination cleanly. Most existing proofs require combinators to
-guarantee that the string being parsed decreases, conflating termination and
-correctness.
+general recursion lets us separate partial correctness 
+from the proof of termination cleanly. Most existing proofs require combinators to
+guarantee that the string being parsed decreases, conflating these two issues.
 
 In particular, the sections of this paper make the following contributions:
 \begin{itemize}
-\item The non-recursive fragment of regular expressions can be correctly parsed
-  using non-determinism (Section \ref{sec:regex-nondet}).
+\item After quickly revisiting our previous work on predicate
+  transformer semantics for effects (Section~\ref{sec:recap}), we show how the
+  non-recursive fragment of regular expressions can be correctly
+  parsed using non-determinism (Section \ref{sec:regex-nondet}).
 \item By combining non-determinism with general recursion (Section \ref{sec:combinations}),
   support for the Kleene star can be added without compromising our previous definitions
   (Section \ref{sec:regex-rec}).
@@ -99,38 +105,22 @@ In particular, the sections of this paper make the following contributions:
 \fi
 \end{itemize}
 
-The goal of our work is not the regular expression parsers we write, or even
-their correctness proofs, both of which have been done before~\cite{harper-regex, intrinsic-verification-regex}.
-Instead, we discuss the steps of writing and verifying the parser to illustrate
-the process of reasoning with predicate transformers and algebraic effects.
-We work in the spirit of a Functional Pearl by \citet{harper-regex},
-which also uses the parsing of regular languages as an example of principles of functional software development.
-Starting out with defining regular expressions as a data type and the language associated with each expression as an inductive relation,
-both use the relation to implement essentially the same |match| function, which does not terminate.
-In both papers, the partial correctness proof of |match| uses a specification expressed as a postcondition,
-based on the inductive relation representing the language of a given regular expression.
-Where we use nondeterminism to handle the concatenation operator,
-\citeauthor{harper-regex} uses a continuation-passing parser for control flow.
-Since the continuations take the unparsed remainder of the string,
-they correspond almost directly to the |Parser| effect we introduce later.
-Another main difference between our implementation and \citeauthor{harper-regex}'s
-is in the way the non-termination of |match| is resolved.
-\citeauthor{harper-regex} uses the derivative operator to rewrite the expression in a standard form
-which ensures that the |match| function terminates.
-We use the derivative operator to implement a different matcher |dmatch| which is easily proved to be terminating,
-then show that |match| is refined by |dmatch|, showing that |dmatch| is also sound with respect to the specification of |match|.
-The final major difference is that \citeauthor{harper-regex} uses manual verification of the program and our work is formally computer-verified.
-% Although our development takes more work, the correctness proofs give more certainty than the informal arguments made by \citeauthor{harper-regex}.
-% In general, choosing between informal reasoning and formal verification will always be a trade-off between speed and accuracy.
+The goal of our work is not so much the verification of a parser for regular languages,
+which has been done before~\cite{harper-regex, intrinsic-verification-regex}.
+Instead, we aim to illustrate the steps of incrementally developing and verifying a parser
+using predicate transformers and algebraic effects.
+This work is in the spirit of a Theoretical Pearl~\cite{harper-regex}:
+we begin by defining a |match| function that does not terminate. The remainder of the paper
+then shows how to fix this function, without having to redo the complete proof of correctness.
 
-All the programs and proofs in this paper are written in the dependently typed language Agda~\cite{agda-thesis},
-and are thus formally verified.
+All the programs and proofs in this paper are written in the dependently typed language Agda~\cite{agda-thesis}.
 The full source code, including lemmas we have chosen to omit for sake of readability,
-is available at \url{https://github.com/Vierkantor/refinement-parsers}.
+is available online.\footnote{\url{https://github.com/Vierkantor/refinement-parsers}}
 Apart from postulating function extensionality,
 we remain entirely within Agda's default theory.
 
 \section{Recap: algebraic effects and predicate transformers}
+\label{sec:recap}
 Algebraic effects separate the \emph{syntax} and \emph{semantics} of
 effectful operations. In this paper, we will model them by taking the
 free monad over a given signature, describing certain
@@ -174,7 +164,7 @@ corresponding \emph{free monad}:
     Pure : a -> Free e a
     Op   : (c : C e) -> (R e c -> Free e a) -> Free e a
 \end{code}
-This gives a monad, with the bind operator defined as follows:
+This gives a monad, with the bind operator defined as follows.
 \begin{code}
   _>>=_ : (Forall(a b e)) Free e a -> (a -> Free e b) -> Free e b
   Pure x    >>= f = f x
@@ -1073,9 +1063,7 @@ The first step in this proof is that |dmatch| always terminates.
 % We want to see that the |Partial| computation gives some output,
 % without caring about which output this is.
 To express the termination of a recursive computation, we define the following
-predicate, |terminates-in|. Given a program |S| that calls the recursive
-function |f : (RecArr I es O)|, we check whether the computation requires no
-more than a fixed number of steps to terminate:
+predicate, |terminates-in|: 
 \begin{code}
   terminates-in : (Forall(I O es a)) (pts : PTs es) (f : (RecArr I es O)) (S : Free (Rec I O :: es) a) → Nat → Set
   terminates-in pts f (Pure x)            n         = ⊤
@@ -1084,6 +1072,9 @@ more than a fixed number of steps to terminate:
   terminates-in pts f (Op (∈Tail i) c k)   n        =
     lookupPT pts i c (λ x → terminates-in pts f (k x) n)
 \end{code}
+Given a program |S| that calls the recursive
+function |f : (RecArr I es O)|, we check whether the computation requires no
+more than a fixed number of steps to terminate.
 
 Since |dmatch| always consumes a character before going in recursion,
 we can bound the number of recursive calls with the length of the input string.
@@ -1274,35 +1265,48 @@ correct parser for regular languages.
 
 \section{Discussion}
 
-\subsection{Related work}
-In this paper, we have described a representation of parsers and shown how to perform verification of parsers in this representation.
-For imperative programs, the refinement calculus provides a verification methodology for imperative programs~\cite{prog-from-spec}.
-The refinement calculus inspired our use of predicate transformer semantics and the refinement relation to verify functional programs~\cite{pt-semantics-for-effects}.
-The \emph{Dijkstra monad} introduced in the language F$\star$ uses predicate transformer semantics for verifying effectful programs
+\subsection*{Related work}
+The refinement calculus has traditionally been used in the verification of imperative programs~\cite{prog-from-spec}.
+In this paper, however, we show how many of the ideas from the refinement calculus can also be used in the verification of functional programs~\cite{pt-semantics-for-effects}.
+The \emph{Dijkstra monad}, introduced in the language F$\star$, also uses a predicate transformer semantics for verifying effectful programs
 by collecting the proof obligations for verification~\cite{dijkstra-monad, dijkstra-monads-for-free, dijkstra-monads-for-all}.
-As a result, the semantics of a program written in the Dijkstra monad are fixed.
+This paper demonstrates how similar verification efforts can be undertaken directly in an interactive theorem prover such as Agda.
 The separation of syntax and semantics in our approach allows for verification to be performed in several steps,
-such as we did for |dmatchTerminates|, |dmatchSound| and |dmatchComplete|.
+such as we did for |dmatchTerminates|, |dmatchSound| and |dmatchComplete|, adding new effects as we need them.
 
-Our running example of the regular expression parser parallels the development of a regular expression parser in a Functional Pearl by \citet{harper-regex}.
-Where \citeauthor{harper-regex} uses manual checking and informal reasoning,
-our work is based on formal verification using Agda.
+Our running example of the regular expression parser is inspired by the development of a regular expression parser in by \citet{harper-regex}.
 More recently, \citet{intrinsic-verification-regex} adapted the Functional Pearl to Agda.
 A direct translation of \citeauthor{harper-regex}'s definitions is not possible:
 they are rejected by Agda's termination checker because they are not structurally recursive.
-Thus, \citeauthor{intrinsic-verification-regex} must modify the definitions to make them acceptable to Agda.
-In contrast, adding general recursion as an effect allows us to implement the Kleene star without modifying existing code.
+\citeauthor{intrinsic-verification-regex} show how the defunctionalization of Harper's matcher, written in
+continuation-passing style, is 
+accepted by Agda's termination checker.
 
-Formally verified parsers for a more general class of languages have been developed before;
-\citet{total-parser-combinators, simple-functional-cfg-parsing, firsov-certification-context-free-grammars} did this in a functional style.
+Formally verified parsers for a more general class of languages have been developed before:
+\citet{total-parser-combinators, simple-functional-cfg-parsing, firsov-certification-context-free-grammars}, amongst others, have
+previously shown how to verify parsers developed in a functional language.
 In these developments, semantics are defined specialized to the domain of parsing,
 while our semantics arise from combining a generic set of effect semantics.
-Another difference between our work and the work of \citet{total-parser-combinators, firsov-certification-context-free-grammars}
-is that we deal with termination syntactically, either by incorporating delay and force operators in the grammar,
+Furthermore, we allow our parsers to be written using general recursion directly, whereas most existing approaches
+deal with termination syntactically, either by incorporating delay and force operators in the grammar,
 or explicitly passing around a proof of termination in the definition of the parser.
-The modularity of our setup results in a strong separation of syntax and semantics,
-using the |Rec| effect to give the syntax of programs regardless of termination,
-later proving the semantic property of termination.
+The modularity of our setup allows us to separate partial and total correctness cleanly.
+
+% The partial correctness proof of |match| uses a specification expressed as a postcondition,
+% based on the inductive relation representing the language of a given regular expression.
+% Where we use nondeterminism to handle the concatenation operator,
+% \citeauthor{harper-regex} uses a continuation-passing parser for control flow.
+% Since the continuations take the unparsed remainder of the string,
+% they correspond almost directly to the |Parser| effect we introduce later.
+% Another main difference between our implementation and \citeauthor{harper-regex}'s
+% is in the way the non-termination of |match| is resolved.
+% \citeauthor{harper-regex} uses the derivative operator to rewrite the expression in a standard form
+% which ensures that the |match| function terminates.
+% We use the derivative operator to implement a different matcher |dmatch| which is easily proved to be terminating,
+% then show that |match| is refined by |dmatch|, showing that |dmatch| is also sound with respect to the specification of |match|.
+% The final major difference is that \citeauthor{harper-regex} uses manual verification of the program and our work is formally computer-verified.
+% % Although our development takes more work, the correctness proofs give more certainty than the informal arguments made by \citeauthor{harper-regex}.
+% % In general, choosing between informal reasoning and formal verification will always be a trade-off between speed and accuracy.
 
 %Our development of |dmatch| uses a combination of |Parser| and |Rec| effects to handle recursion in regular expressions.
 %Alternate solutions include representing the language in a coinductive type.
@@ -1311,37 +1315,41 @@ later proving the semantic property of termination.
 %These two coinductive constructions carry proofs of productivity, in the form of sized types, in their definitions,
 %again mixing syntax and semantics.
 
-\subsection{Open issues}
-This paper adds to our previous results \cite{pt-semantics-for-effects} by
-demonstrating their use in non-trivial development. In the process, we give
-semantics for combinations of effects and show that effect handlers can
-interact usefully with predicate transformers.  Still, the choice to verify
-parsers was made expecting that predicate transformer semantics should apply
-easily to them.  Whether we can do the same verification for practical programs
-is not yet answerable with an unanimous ``yes''.
+\subsection*{Open issues}
+This paper builds upon our previous results \cite{pt-semantics-for-effects} by
+demonstrating their use in non-trivial development. In the process, we show how to
+\emph{combine} predicate transformer semantics and reason about
+programs using a combination of effects.
+
+Our approach relies on using coproducts to combinations of effect
+syntax The interaction between different effects means applying
+handlers in a different order can result in different semantics.  We
+assign predicate transformer semantics to a combination of effects all
+at once, specifying their interaction explicitly---but we would still
+like to explore how to handle effects one-by-one, allowing for greater
+flexibility when assigning semantics to effectful programs~\cite{seffect-handlers-in-scope,modular-algebraic-effect}.
+
+% Can we assign semantics to effects one by one, such that they interact in a similar way as handlers do? 
+% Still, the choice to verify
+% parsers was made expecting that predicate transformer semantics should apply
+% easily to them.  Whether we can do the same verification for practical programs
+% is not yet answerable with an unanimous ``yes''.
 % Perhaps a translation of ``er valt iets af te dingen aan het idee dat we een praktisch programma verifiëren'' is more apt.
 
-We have described how coproducts allow for combinations of effect syntax and semantics,
-and how an individual handler interacts with these semantics.
-The interaction between different effects means
-applying handlers in a different order can result in different semantics.
-We assign predicate transformer semantics to a combination of effects all at once,
-specifying their interaction explicitly.
-Can we assign semantics to effects one by one, such that they interact in a similar way as handlers do?
+\subsection*{Conclusions}
+In conclusion, we have illustrated the approach to developing verified
+software in a proof assistant using a predicate transformer semantics
+for effects for a non-trivial example.  We believe this approach
+enables us to modularly add new effects, while still be abel to re-use
+any existing proofs.  Along the way, introduced how to combine
+different effects and define different semantics for these effects,
+without impacting existing definitions.  As a result, the verification
+effort---while conceptually more challenging at times---remains fairly modular.
 
-\subsection{Conclusions}
-In conclusion, the two distinguishing features of our work are formality and modularity.
-We could introduce the combination of effects, petrol-driven termination, semantics for state and variant-based termination
-without impacting existing definitions.
-We strictly separate the syntax and semantics of the programs,
-and partial correctness from termination.
-This results in verification proofs that do not need to carry around many goals,
-allowing most of them to consist of unfolding the definition and filling in the obvious terms.
-
-We note the absence of any large engineering effort needed for our development,
-as we expected before writing this paper~\cite{pt-semantics-for-effects}.
-The optimist can conclude that the elegance of our framework caused it to prevent the feared level of complication;
-the pessimist can conclude that the real hard work will be required as soon as we encounter a real-world application.
+% We note the absence of any large engineering effort needed for our development,
+% as we expected before writing this paper~\cite{pt-semantics-for-effects}.
+% The optimist can conclude that the elegance of our framework caused it to prevent the feared level of complication;
+% the pessimist can conclude that the real hard work will be required as soon as we encounter a real-world application.
 
 \printbibliography
 
