@@ -1343,6 +1343,9 @@ as we expected before writing this paper~\cite{pt-semantics-for-effects}.
 The optimist can conclude that the elegance of our framework caused it to prevent the feared level of complication;
 the pessimist can conclude that the real hard work will be required as soon as we encounter a real-world application.
 
+\paragraph{Acknowledgements}
+T. Baanen has received funding from the NWO under the Vidi program (project No. 016.Vidi.189.037, Lean Forward).
+
 \printbibliography
 
 \iffalse
