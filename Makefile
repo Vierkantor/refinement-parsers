@@ -11,7 +11,5 @@ clean :
 
 check :
 	lhs2TeX --newcode  --no-pragmas refinement-parsers.lagda -o Check.agda
-#	cp src/Prelude.agda .
 	agda Check.agda
-#	rm -rf Check.agda*
 	echo 'Check succeeded'

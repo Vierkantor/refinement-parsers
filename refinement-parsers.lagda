@@ -1,5 +1,8 @@
 \documentclass[submission,copyright,creativecommons]{eptcs}
 
+% Uncomment the following line to add the appendix on Context-free grammars:
+\def\includeCFGs{}
+
 \providecommand{\event}{MSFP 2020}
 
 \usepackage[style=numeric,natbib=true]{biblatex}
@@ -90,7 +93,7 @@ In particular, the sections of this paper make the following contributions:
 \item Finally, we show that the derivative-based implementation terminates
   and \emph{refines} the original parser (Section \ref{sec:dmatch-correct}).
 
-\iffalse
+\ifdefined\includeCFGs
 \item Next, we show how this approach may be extended to handle
   context-free languages. To do so, we show how to write parsers using
   algebraic effects (Section \ref{sec:parser}), and map grammars to parsers (Section
@@ -1348,8 +1351,9 @@ T. Baanen has received funding from the NWO under the Vidi program (project No. 
 
 \printbibliography
 
-\iffalse
 \appendix
+
+\ifdefined\includeCFGs
 
 \section{Parsing as effect} \label{sec:parser}
 %if style == newcode
