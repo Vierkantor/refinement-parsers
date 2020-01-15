@@ -139,6 +139,7 @@
 %format ⇔ = "\mathbin{\iff}"
 %format _⇔_ = "\_\!\mathbin{\iff}\!\_"
 %format ∧ = "\mathbin{\wedge}"
+%format ∨ = "\mathbin{\vee}"
 %format _∣_ = "\_\!\mathbin{\mid}\!\_"
 %format ∣ = "\mathbin{\mid}"
 %format ⊑-refl = "\sqsubseteq\!\text{\itshape-refl}"
