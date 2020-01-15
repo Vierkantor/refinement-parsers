@@ -1,7 +1,7 @@
 \documentclass[submission,copyright,creativecommons]{eptcs}
 
 % Uncomment the following line to add the appendix on Context-free grammars:
-\def\includeCFGs{}
+% \def\includeCFGs{}
 
 \providecommand{\event}{MSFP 2020}
 
@@ -47,7 +47,7 @@ P ⊆ Q = ∀ x -> P x -> Q x
 \begin{abstract}
 This paper describes how to verify a parser for regular expressions in a functional programming language using predicate transformer semantics for a variety of effects.
 %
-Where our previous work in this area focussed on the semantics for a
+Where our previous work in this area focused on the semantics for a
 single effect, parsing requires a combination of effects:
 non-determinism, general recursion and mutable state.  Reasoning about
 such combinations of effects is notoriously difficult, yet our
@@ -626,7 +626,7 @@ effects that we saw previously as follows:
   call ⦃ iRec ⦄ i = Op iRec i Pure
 \end{code}
 These now operate over any free monad with effects given by |es|,
-provided we can show that the list |es| contains the |NonDet| and
+provided we can show that the list |es| contains the |Nondet| and
 |Rec| effects respectively.
 %if style == newcode
 \begin{code}
@@ -1286,7 +1286,7 @@ continuation-passing style, is
 accepted by Agda's termination checker.
 
 Formally verified parsers for a more general class of languages have been developed before:
-\citet{total-parser-combinators, simple-functional-cfg-parsing, firsov-certification-context-free-grammars}, amongst others, have
+\citet{total-parser-combinators, simple-functional-cfg-parsing, firsov-certification-context-free-grammars}, among others, have
 previously shown how to verify parsers developed in a functional language.
 In these developments, semantics are defined specialized to the domain of parsing,
 while our semantics arise from combining a generic set of effect semantics.
@@ -1324,13 +1324,13 @@ demonstrating their use in non-trivial development. In the process, we show how 
 \emph{combine} predicate transformer semantics and reason about
 programs using a combination of effects.
 
-Our approach relies on using coproducts to combinations of effect
-syntax The interaction between different effects means applying
-handlers in a different order can result in different semantics.  We
-assign predicate transformer semantics to a combination of effects all
-at once, specifying their interaction explicitly---but we would still
-like to explore how to handle effects one-by-one, allowing for greater
-flexibility when assigning semantics to effectful programs~\cite{seffect-handlers-in-scope,modular-algebraic-effect}.
+Our approach relies on using coproducts to combine effect syntax. The
+interaction between different effects means applying handlers in a different
+order can result in different semantics.  We assign predicate transformer
+semantics to a combination of effects all at once, specifying their interaction
+explicitly---but we would still like to explore how to handle effects
+one-by-one, allowing for greater flexibility when assigning semantics to
+effectful programs~\cite{effect-handlers-in-scope,modular-algebraic-effects}.
 
 % Can we assign semantics to effects one by one, such that they interact in a similar way as handlers do? 
 % Still, the choice to verify
@@ -1340,14 +1340,14 @@ flexibility when assigning semantics to effectful programs~\cite{seffect-handler
 % Perhaps a translation of ``er valt iets af te dingen aan het idee dat we een praktisch programma verifiëren'' is more apt.
 
 \subsection*{Conclusions}
-In conclusion, we have illustrated the approach to developing verified
-software in a proof assistant using a predicate transformer semantics
-for effects for a non-trivial example.  We believe this approach
-enables us to modularly add new effects, while still be abel to re-use
-any existing proofs.  Along the way, introduced how to combine
-different effects and define different semantics for these effects,
-without impacting existing definitions.  As a result, the verification
-effort---while conceptually more challenging at times---remains fairly modular.
+In conclusion, we have illustrated the approach to developing verified software
+in a proof assistant using a predicate transformer semantics for effects for a
+non-trivial example.  We believe this approach enables us to add new effects in
+a modular fashion, while still being able to re-use any existing proofs.  Along
+the way, we introduced how to combine different effects and define different
+semantics for these effects, without impacting existing definitions.  As a
+result, the verification effort---while conceptually more challenging at
+times---remains fairly modular.
 
 % We note the absence of any large engineering effort needed for our development,
 % as we expected before writing this paper~\cite{pt-semantics-for-effects}.
