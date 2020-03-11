@@ -59,7 +59,7 @@ of program syntax, correctness proofs and termination proofs.
 \label{sec:intro}
 
 There is a significant body of work on parsing using combinators
-in functional programming languages~\cite[among many others]{list-of-successes, hutton, functional-parsers, swierstra-duponcheel, leijen2001parsec, efficient-combinator-parsers, parser-combinators-for-left-recursive, parsing-with-derivatives}. 
+in functional programming languages~\cite{list-of-successes, hutton, functional-parsers, swierstra-duponcheel, leijen2001parsec, efficient-combinator-parsers, parser-combinators-for-left-recursive, parsing-with-derivatives}, among many others.
 Yet how can we ensure that these parsers are correct? There is notably
 less work that attempts to  answer this
 question~\cite{total-parser-combinators, firsov-certification-context-free-grammars}.
@@ -91,8 +91,7 @@ In particular, the sections of this paper make the following contributions:
   non-recursive fragment of regular expressions can be correctly
   parsed using non-determinism (Section \ref{sec:regex-nondet}).
 \item By combining non-determinism with general recursion (Section \ref{sec:combinations}),
-  support for the Kleene star can be added without compromising our previous definitions
-  (Section \ref{sec:regex-rec}).
+  support for the Kleene star can be added without compromising our previous definitions.
 \item Although the resulting parser is not guaranteed to terminate,
   we can define another implementation using Brzozowski derivatives (Section \ref{sec:dmatch}),
   introducing an additional effect and its semantics in the process.
@@ -127,7 +126,7 @@ we remain entirely within Agda's default theory.
 Algebraic effects separate the \emph{syntax} and \emph{semantics} of
 effectful operations. In this paper, we will model them by taking the
 free monad over a given signature, describing certain
-operations. The type of such a signature is defined as follows:
+operations. Signatures are represented by the type |Sig|, as follows:
 \begin{code}
 record Sig : Set₁ where
   constructor mkSig
@@ -135,21 +134,22 @@ record Sig : Set₁ where
     C : Set
     R : C -> Set
 \end{code}
+Translating Agda syntax into words, |Sig| is a type with constructor |mkSig : (C : Set) -> (C -> Set) -> Sig| and projections |C : Sig -> Set| and |R : (e : Sig) -> C e -> Set|.
 Here the type |C| contains the `commands', or effectful operations
 that a given effect supports. For each command |c : C|, the type |R c|
 describes the possible responses.
 The structure on a signature is that of a \emph{container}~\cite{categories-of-containers}.
-The following signature describes two operations: the
+The following signature describes two commands: the
 non-deterministic choice between two values, |Choice|; and a failure
-operator, |Fail|.
-\begin{code}    
-data CNondet : Set where
-  Choice  : CNondet  
-  Fail    : CNondet
-\end{code} % Hint that there should be a page break after |Fail|, keeping |CNondet| on one page.
+operator, |Fail|. The response type |RNondet| is defined by pattern matching on the command.
+If the command is |Choice|, the response is a |Bool|; the |Fail| command gives no response, indicated by the empty type |⊥|.
 \begin{code}
+data CNondet : Set where
+  Choice  : CNondet
+  Fail    : CNondet
+
 RNondet : CNondet -> Set
-RNondet Choice  = Bool  
+RNondet Choice  = Bool
 RNondet Fail    = ⊥
 
 Nondet = mkSig CNondet RNondet
@@ -184,19 +184,20 @@ constructors, sometimes referred to as \emph{generic effects} in the
 literature~\cite{algebraic-operations-and-generic-effects}:
 \begin{code}
   fail : (Forall(a)) Free Nondet a
-  fail = Op Fail λ ()
+  fail = Op Fail (λ ())
   choice : (Forall(a)) Free Nondet a -> Free Nondet a -> Free Nondet a
-  choice S₁ S₂ = Op Choice λ b -> if b then S₁ else S₂
+  choice S₁ S₂ = Op Choice (λ b -> if b then S₁ else S₂)
 \end{code}
+The empty parentheses |()| in the definition of |fail| are Agda syntax for an empty case split.
+
 In this paper, we will assign \emph{semantics} to effectful programs
 by mapping them to \emph{predicate transformers}.
 Each semantics will be computed by a fold over the free monad, mapping
-some predicate |P : a -> Set| to a predicate on the result of the free
-monad to a predicate of the entire computation of type |Free (eff C R) a -> Set|.
+some predicate |P : a -> Set| to a predicate of the entire computation of type |Free (mkSig C R) a -> Set|.
 \begin{code}
-  wp'' : (implicit(C : Set)) (implicit(R : C -> Set)) (implicit(a : Set)) ((c : C) -> (R c -> Set) -> Set) -> Free (mkSig C R) a -> (a -> Set) -> Set
+  wp'' : (implicit(C : Set)) (implicit(R : C -> Set)) (implicit(a : Set)) (alg : (c : C) -> (R c -> Set) -> Set) -> Free (mkSig C R) a -> (a -> Set) -> Set
   (wp alg (Pure x)) P  = P x
-  (wp alg (Op c k)) P  = alg c λ x -> (wp (alg) (k x)) P
+  (wp alg (Op c k)) P  = alg c (λ x -> (wp (alg) (k x)) P)
 \end{code}
 The \emph{predicate transformer} nature of these semantics
 becomes evident when we assume the type of responses |R| does not depend on the command |c : C|.
@@ -207,8 +208,8 @@ Thus, |alg| has the form of a predicate transformer from postconditions of type
 % The type of |(wp' alg)| under the same isomorphism becomes
 % |(a -> Set) -> (Free e a → Set)|.
 
-Two considerations cause us to define the types |alg : (c : C) → (R c → Set) → Set|,
-and analogously |(wp' alg) : Free (mkSig C R) a → (a → Set) → Set|.
+Two considerations cause us to define the types as |alg : (c : C) → (R c → Set) → Set|
+and |(wp' alg) : Free (mkSig C R) a → (a → Set) → Set|.
 By having the command as first argument to |alg|, we allow |R| to depend on |C|.
 Moreover, |(wp' alg)| computes semantics,
 so it should take a program |S : Free (mkSig C R) a| as its argument
@@ -243,6 +244,7 @@ Predicate transformers provide a single semantic domain to relate
 programs and specifications~\cite{prog-from-spec}.
 Throughout this paper, we will consider specifications consisting of a
 pre- and postcondition:
+
 \begin{code}
   record Spec (a : Set) : Set₁ where
     constructor [[_,_]]
@@ -311,11 +313,12 @@ string. Furthermore, our language for regular expressions is closed
 under choice (|_∣_|), concatenation (|_·_|) and linear repetition
 denoted by the Kleene star (|_*|).
 
-What should our regular expression matcher return?  A Boolean value is
+The input to the regular expression matcher will be a |String| together with a |Regex| denoting the language to match the string against.
+What should our matcher return?  A Boolean value is
 not particularly informative; yet we also choose not to provide an
 intrinsically correct definition, instead performing extrinsic
 verification using our predicate transformer semantics. The |tree|
-data type below, captures a potential parse tree associated with a
+data type below captures a potential parse tree associated with a
 given regular expression:
 \begin{code}
 tree : Regex -> Set
@@ -395,23 +398,25 @@ module AlmostRegex where
   match Epsilon        (_ :: _)       = fail
   match (Singleton c)  Nil            = fail
   match (Singleton c)  (x :: Nil)     with c ≟ x
-  match (Singleton c)  (.c :: Nil)    | yes refl  = Pure c
+  match (Singleton c)  (c :: Nil)     | yes refl  = Pure c
   match (Singleton c)  (x :: Nil)     | no ¬p     = fail
   match (Singleton c)  (_ :: _ :: _)  = fail
-  match (l ∣ r)        xs             = choice (Inl <$> match l xs) (Inr <$> match r xs)  
+  match (l ∣ r)        xs             = choice (Inl <$> match l xs) (Inr <$> match r xs)
   match (l · r)        xs             = do  (ys , zs) <- allSplits xs
                                             y <- match l ys
                                             z <- match r zs
                                             Pure (y , z)
-  match (r *) xs                      = fail    
+  match (r *) xs                      = fail
   \end{code}
   \caption{The definition of the |match| function}
   \label{fig:match}
 \end{figure}
+
 Finally, we cannot yet implement the case for the Kleene star.  We could
 attempt to mimic the case for concatenation, attempting to match |r · (r *)|.
 This definition, however, is rejected by Agda as it is not structurally
 recursive. For now we choose to simply fail on all such regular expressions.
+In Section \ref{sec:combinations} we will fix this issue, after introducing the necessary tools.
 
 Still, we can prove that the |match| function behaves correctly on all
 regular expressions that do not contain iteration. We introduce a |hasNo*|
@@ -451,7 +456,7 @@ In most of the cases for |r|, the definition of |match r| is uncomplicated and
 the proof is similarly simple. As soon as we need to reason about programs
 composed using the monadic bind operator, we quickly run into issues. In
 particular, when verifying the case for |l · r|, we would like to use
-our induction hypotheses on two recursive calls. To do, we prove the
+our induction hypotheses on two recursive calls. To do so, we prove the
 following lemma that allows us to replace the semantics of a composite
 program built using the monadic bind operation with the composition of
 the underlying predicate transformers:
@@ -547,7 +552,10 @@ recursing directly, the `effects' that this signature supports require an input
 abstracts over a value of type |O i|, corresponding to the result of a
 recursive call. Note that the functions defined in this style are \emph{not}
 recursive; instead we will need to write handlers to unfold the function
-definition or prove termination separately.
+definition or prove termination separately. A handler for the |Rec| effect,
+under the intended semantics, thus behaves like a fixed-point combinator,
+introducing recursion to an otherwise recursion-free language through
+substituting the function body at each recursive call.
 
 We cannot, however, define a |match| function of the form |Free (Rec _
 _)| directly, as our previous definition also used non-determinism. To
@@ -569,7 +577,7 @@ effects~\cite{effect-handlers-in-scope, la-carte}.
 Rather than restrict ourselves to the binary composition using
 coproducts, we modify the |Free| monad to take a \emph{list} of
 signatures as its argument, taking the coproduct of the elements of
-the list as its signature functor.  The |Pure| constructor remains as
+the list as its signature functor.  The |Pure| constructor remains
 unchanged; while the |Op| constructor additionally takes an index into the
 list to specify the effect that is invoked.
 %if style == newcode
@@ -618,9 +626,9 @@ required type can be found. For example, we can define the generic
 effects that we saw previously as follows:
 \begin{code}
   fail : (Forall(a es)) ⦃ iND : Nondet ∈ es ⦄ -> Free es a
-  fail ⦃ iND ⦄ = Op iND Fail λ ()
+  fail ⦃ iND ⦄ = Op iND Fail (λ ())
   choice : (Forall(a es)) ⦃ iND : Nondet ∈ es ⦄ -> Free es a -> Free es a -> Free es a
-  choice ⦃ iND ⦄ S₁ S₂ = Op iND Choice λ b -> if b then S₁ else S₂
+  choice ⦃ iND ⦄ S₁ S₂ = Op iND Choice (λ b -> if b then S₁ else S₂)
 
   call : (Forall(I O es)) ⦃ iRec : Rec I O ∈ es ⦄ -> (i : I) -> Free es (O i)
   call ⦃ iRec ⦄ i = Op iRec i Pure
@@ -681,7 +689,7 @@ but also a proof that this predicate transformer is
 underlying predicate transformers;
 for each semantics we present the proof of monotonicity is immediate.
 
-Given a such a list of predicate transformers,
+Given such a list of predicate transformers,
 defining the semantics of an effectful program is a straightforward generalization of the previously defined semantics.
 The |Pure| case is identical, and in the |Op| case we can apply the predicate transformer returned by the |lookupPT| helper function.
 \begin{code}
@@ -700,7 +708,7 @@ This results in the following definition of the semantics for combinations of ef
 \begin{code}
   wp'' : (Forall(a es)) (pts : PTs es) -> Free es a -> (a -> Set) -> Set
   (wp pts (Pure x))    P  = P x
-  (wp pts (Op i c k))  P  = lookupPT pts i c λ x -> (wp pts (k x)) P
+  (wp pts (Op i c k))  P  = lookupPT pts i c (λ x -> (wp pts (k x)) P)
 \end{code}
 
 The effects that we will use for our |match| function consist of a
@@ -726,8 +734,6 @@ function adheres to this invariant or not:
 As we shall see shortly, when revisiting the |match| function, the
 |Match| relation defined previously will fulfill the role of this
 `invariant.'
-
-\section{Recursively parsing every regular expression} \label{sec:regex-rec}
 
 % In the case of verifying the |match| function, the |Match| relation will play the role of |R|.
 % If we use |ptRec R| as a predicate transformer to check that a recursive function satisfies the relation |R|,
@@ -892,9 +898,9 @@ Following \citet{Brzozowski}, we use a helper function |matchEpsilon| that decid
   nilConcat (Concat {ys = Nil} {x :: zs} ml mr) ()
   nilConcat (Concat {ys = x :: ys} {zs} ml mr) ()
 
-  matchEpsilon Empty = no λ ()
+  matchEpsilon Empty = no (λ ())
   matchEpsilon Epsilon = yes (tt , Epsilon)
-  matchEpsilon (Singleton x) = no λ ()
+  matchEpsilon (Singleton x) = no (λ ())
   matchEpsilon (l · r) with matchEpsilon l | matchEpsilon r
   matchEpsilon (l · r) | yes (ml , pl) | yes (mr , pr) = yes ((ml , mr) , (Concat pl pr))
   matchEpsilon (l · r) | yes pl | no ¬pr = no λ {(m , x) -> ¬pr (Pair.snd (nilConcat x refl))}
@@ -947,7 +953,7 @@ Its definition closely follows the pattern matching performed in the definition 
 
 The description of a derivative-based matcher is stateful:
 we perform a step by \emph{removing} a character from the input string.
-This state can be encapsulated in a new effect |Parser|.
+This state can be encapsulated in a new effect |Parser| that contains the operation needed to manipulate the parser's state.
 The |Parser| effect has one command |Symbol| that returns a |Maybe Char|.
 Calling |Symbol| will return |just| the head of the unparsed remainder (advancing the string by one character) or |nothing| if the string has been totally consumed.
 \begin{code}
@@ -984,7 +990,8 @@ Although the parser is easily seen to terminate in the intended semantics
 (since a character is removed from the input string between each recursive
 call), a semantics where the call to |symbol| always returns |just| a character
 causes |dmatch| to diverge.  That termination of |dmatch| is not a syntactical
-property, is reflected by the use of the |Rec| effect in its definition.
+property, is reflected by the use of the recursive |call| in its definition,
+and the loopy arrow.
 
 Adding the new effect |Parser| to our repertoire thus requires specifying its semantics.
 We gave the effects |Nondet| and |Rec| predicate transformer semantics in the form of a |PT| record.
@@ -998,7 +1005,8 @@ With these augmented predicates, the predicate transformer semantics for the |Pa
   ptParser Symbol P (x :: xs)  = P (just x)  xs
 \end{code}
 
-In this article, we want to demonstrate the modularity of predicate transformer semantics.
+In this article, we want to demonstrate the modularity of predicate transformer semantics,
+allowing us to introduce new notions without having to rework existing constructions.
 To illustrate how the semantics mesh well with other forms of semantics,
 we do \emph{not} use |ptParser| as semantics for |Parser| in the remainder.
 We give denotational semantics, in the form of an \emph{effect handler} for |Parser|~\cite{algebraic-effect-handlers,effect-handlers-in-scope}:
@@ -1021,17 +1029,19 @@ allowing us to handle the |Parser| effect in |dmatch|.
     where
     liftE : ∀ {e es a} -> Free es a -> Free (e :: es) a
     liftE (Pure x) = Pure x
-    liftE (Op i c k) = Op (∈Tail i) c λ x -> liftE (k x)
+    liftE (Op i c k) = Op (∈Tail i) c (λ x -> liftE (k x))
 
     handleRec' : ∀ {C R es s} -> ((c : C) -> s -> Free es (R c × s)) -> forall { I O a } -> (Free (Rec I O :: mkSig C R :: es) a) -> s -> (Free (Rec (I × s) (O ∘ Pair.fst) :: es) (a × s))
     handleRec' h (Pure x) t = Pure (x , t)
-    handleRec' h (Op ∈Head i k) t = Op ∈Head (i , t) λ x -> handleRec' h (k x) t
-    handleRec' h (Op (∈Tail ∈Head) c k) t = liftE (h c t) >>= λ xt -> handleRec' h (k (Pair.fst xt)) (Pair.snd xt)
-    handleRec' h (Op (∈Tail (∈Tail i)) c k) t = Op (∈Tail i) c λ x -> handleRec' h (k x) t
+    handleRec' h (Op ∈Head i k) t = Op ∈Head (i , t) (λ x -> handleRec' h (k x) t)
+    handleRec' h (Op (∈Tail ∈Head) c k) t = liftE (h c t) >>= (λ xt -> handleRec' h (k (Pair.fst xt)) (Pair.snd xt))
+    handleRec' h (Op (∈Tail (∈Tail i)) c k) t = Op (∈Tail i) c (λ x -> handleRec' h (k x) t)
 \end{code}
 %endif
 Note that |dmatch'| has exactly the type of the previously defined |match|,
 conveniently allowing us to re-use the |wpMatch'| semantics.
+In this way, the handler |hParser| ``hides'' the implementation detail that the
+|Parser| effect was used.
 
 \section{Proving total correctness} \label{sec:dmatch-correct}
 We finish the development process by proving that |dmatch| is correct.
@@ -1079,7 +1089,7 @@ Given a program |S| that calls the recursive
 function |f : (RecArr I es O)|, we check whether the computation requires no
 more than a fixed number of steps to terminate.
 
-Since |dmatch| always consumes a character before going in recursion,
+Since |dmatch| always consumes a character before recurring,
 we can bound the number of recursive calls with the length of the input string.
 We formalize this argument in the lemma |dmatchTerminates|.
 Note that |dmatch'| is defined using the |hParser| handler,
@@ -1111,7 +1121,7 @@ which we rewrite using the associativity monad law in a lemma called |terminates
 %endif
 
 Apart from termination, correctness consists of soundness and completeness: the
-parse trees returned by |dmatch| should be satisfy the specification given by
+parse trees returned by |dmatch| should satisfy the specification given by
 the original |Match| relation, and for any string that matches the regular
 expression, |dmatch| should return a parse tree.  In the |ptAll| semantics, a
 nondeterministic program |S| is refined by |T| if and only if the output values
@@ -1159,7 +1169,7 @@ The proof is straightforward by induction on the derivation of type |Match (d r 
 \begin{code}
   allSplitsComplete : (xs : String) → (wpMatch (allSplits (hiddenInstance(∈Tail ∈Head)) xs)) ⊑ (wpSpec [[ ⊤ , allSplitsPost xs ]])
 \end{code}
-\begin{code}  
+\begin{code}
   allSplitsComplete Nil P H = tt , λ
     { (Nil , .Nil) refl → H }
   allSplitsComplete (x :: xs) P H = tt , λ
@@ -1277,7 +1287,7 @@ This paper demonstrates how similar verification efforts can be undertaken direc
 The separation of syntax and semantics in our approach allows for verification to be performed in several steps,
 such as we did for |dmatchTerminates|, |dmatchSound| and |dmatchComplete|, adding new effects as we need them.
 
-Our running example of the regular expression parser is inspired by the development of a regular expression parser in by \citet{harper-regex}.
+Our running example of the regular expression parser is inspired by the development of a regular expression parser by \citet{harper-regex}.
 More recently, \citet{intrinsic-verification-regex} adapted the Functional Pearl to Agda.
 A direct translation of \citeauthor{harper-regex}'s definitions is not possible:
 they are rejected by Agda's termination checker because they are not structurally recursive.
@@ -1344,7 +1354,7 @@ In conclusion, we have illustrated the approach to developing verified software
 in a proof assistant using a predicate transformer semantics for effects for a
 non-trivial example.  We believe this approach enables us to add new effects in
 a modular fashion, while still being able to re-use any existing proofs.  Along
-the way, we introduced how to combine different effects and define different
+the way, we demonstrated how to combine different effects and define different
 semantics for these effects, without impacting existing definitions.  As a
 result, the verification effort---while conceptually more challenging at
 times---remains fairly modular.
@@ -1407,11 +1417,11 @@ handling each command in the |Parser| monad.
   runParser : (Forall(a)) Free (Nondet :: Parser :: Nil) a -> ListOfSuccesses a
   runParser (Pure x) Nil = (x , Nil) :: Nil
   runParser (Pure x) (_ :: _) = Nil
-  runParser (Op ∈Head Fail k) xs = Nil
-  runParser (Op ∈Head Choice k) xs =
+  runParser (Op (hidden ∈Head) Fail k) xs = Nil
+  runParser (Op (hidden ∈Head) Choice k) xs =
     runParser (k True) xs ++ runParser (k False) xs
-  runParser (Op (∈Tail ∈Head) Symbol k) Nil = Nil
-  runParser (Op (∈Tail ∈Head) Symbol k) (x :: xs) = runParser (k x) xs
+  runParser (Op (hidden (∈Tail ∈Head)) Symbol k) Nil = Nil
+  runParser (Op (hidden (∈Tail ∈Head)) Symbol k) (x :: xs) = runParser (k x) xs
 \end{code}
 
 In this article, we are more interested in the predicate transformer semantics of |Parser|.
@@ -1445,7 +1455,7 @@ we have found a predicate transformer semantics that incorporates the current st
 \begin{code}
   wpS' : (Forall(s es a)) (pts : PTSs s es) -> Free es a -> (a -> s -> Set) -> s -> Set
   (wpS pts (Pure x)) P = P x
-  (wpS pts (Op i c k)) P = lookupPTS pts i c λ x -> (wpS pts (k x)) P
+  (wpS pts (Op i c k)) P = lookupPTS pts i c (λ x -> (wpS pts (k x)) P)
 \end{code}
 
 In this definition for |wpS'|, we assume that all effects share access to one mutable variable of type |s|.
