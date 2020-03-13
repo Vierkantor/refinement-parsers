@@ -1424,11 +1424,11 @@ handling each command in the |Parser| monad.
   runParser : (Forall(a)) Free (Nondet :: Parser :: Nil) a -> ListOfSuccesses a
   runParser (Pure x) Nil = (x , Nil) :: Nil
   runParser (Pure x) (_ :: _) = Nil
-  runParser (Op (hidden ∈Head) Fail k) xs = Nil
-  runParser (Op (hidden ∈Head) Choice k) xs =
+  runParser (Op ∈Head Fail k) xs = Nil
+  runParser (Op ∈Head Choice k) xs =
     runParser (k True) xs ++ runParser (k False) xs
-  runParser (Op (hidden (∈Tail ∈Head)) Symbol k) Nil = Nil
-  runParser (Op (hidden (∈Tail ∈Head)) Symbol k) (x :: xs) = runParser (k x) xs
+  runParser (Op (∈Tail ∈Head) Symbol k) Nil = Nil
+  runParser (Op (∈Tail ∈Head) Symbol k) (x :: xs) = runParser (k x) xs
 \end{code}
 
 In this article, we are more interested in the predicate transformer semantics of |Parser|.
