@@ -77,10 +77,11 @@ McBride-totally-free}.  We demonstrate how to reason about all parsers
 uniformly using \emph{predicate transformers}~\cite{pt-semantics-for-effects}.
 We extend our previous work that uses predicate transformer semantics to reason
 about a single effect, to handle the combinations of effects used by parsers.
-Our semantics is modular, meaning we can introduce new effects, semantics and
-specifications when they are needed, without having to
+Our semantics is modular, meaning we can introduce new effects (|Rec| in
+Section \ref{sec:combinations}), semantics (|hParser| in Section \ref{sec:dmatch}) and specifications (|terminates-in| in Section \ref{sec:dmatch-correct}) when they are
+needed, without having to
 rework the previous definitions.  In particular, our careful treatment of
-general recursion lets us separate partial correctness 
+general recursion lets us separate partial correctness
 from the proof of termination cleanly. Most existing proofs require combinators to
 guarantee that the string being parsed decreases, conflating these two issues.
 
@@ -125,7 +126,7 @@ we remain entirely within Agda's default theory.
 \label{sec:recap}
 Algebraic effects separate the \emph{syntax} and \emph{semantics} of
 effectful operations. In this paper, we will model them by taking the
-free monad over a given signature, describing certain
+free monad over a given signature~\cite{extensible-effects}, describing certain
 operations. Signatures are represented by the type |Sig|, as follows:
 \begin{code}
 record Sig : Set₁ where
@@ -134,7 +135,7 @@ record Sig : Set₁ where
     C : Set
     R : C -> Set
 \end{code}
-Translating Agda syntax into words, |Sig| is a type with constructor |mkSig : (C : Set) -> (C -> Set) -> Sig| and projections |C : Sig -> Set| and |R : (e : Sig) -> C e -> Set|.
+This is Agda syntax for defining a type |Sig| with constructor |mkSig : (C : Set) -> (C -> Set) -> Sig| and projections |C : Sig -> Set| and |R : (e : Sig) -> C e -> Set|.
 Here the type |C| contains the `commands', or effectful operations
 that a given effect supports. For each command |c : C|, the type |R c|
 describes the possible responses.
@@ -362,7 +363,7 @@ form |l ∣ r|, corresponding to the choice of matching either |l| or
 
 The cases for concatenation and iteration are more
 interesting. Crucially the |Concat| constructor constructs a match on
-the concatenation of the strings |xs| and |zs| -- although there may
+the concatenation of the strings |ys| and |zs| -- although there may
 be many possible ways to decompose a string into two
 substrings. Finally, the two constructors for the Kleene star, |r *|,
 match zero (|StarNil|) or many (|StarConcat|) repetitions of |r|.
@@ -578,7 +579,7 @@ Rather than restrict ourselves to the binary composition using
 coproducts, we modify the |Free| monad to take a \emph{list} of
 signatures as its argument, taking the coproduct of the elements of
 the list as its signature functor.  The |Pure| constructor remains
-unchanged; while the |Op| constructor additionally takes an index into the
+unchanged, while the |Op| constructor additionally takes an index into the
 list to specify the effect that is invoked.
 %if style == newcode
 \begin{code}
@@ -685,7 +686,7 @@ module Stateless where
 The record type |PT| not only contains a predicate transformer |pt|,
 but also a proof that this predicate transformer is
 \emph{monotone}. Several lemmas throughout this paper, such as the
-|terminates-fmap| lemma below, rely on the monotonicity of the
+|terminates-fmap| lemma of Section~\ref{sec:dmatch-correct}, rely on the monotonicity of the
 underlying predicate transformers;
 for each semantics we present the proof of monotonicity is immediate.
 
@@ -953,7 +954,7 @@ Its definition closely follows the pattern matching performed in the definition 
 
 The description of a derivative-based matcher is stateful:
 we perform a step by \emph{removing} a character from the input string.
-This state can be encapsulated in a new effect |Parser| that contains the operation needed to manipulate the parser's state.
+To match the description, we introduce new effect |Parser| which provides a parser-specific interface to this state.
 The |Parser| effect has one command |Symbol| that returns a |Maybe Char|.
 Calling |Symbol| will return |just| the head of the unparsed remainder (advancing the string by one character) or |nothing| if the string has been totally consumed.
 \begin{code}
@@ -1304,6 +1305,12 @@ Furthermore, we allow our parsers to be written using general recursion directly
 deal with termination syntactically, either by incorporating delay and force operators in the grammar,
 or explicitly passing around a proof of termination in the definition of the parser.
 The modularity of our setup allows us to separate partial and total correctness cleanly.
+
+There are various ways to represent a combination of effects such as used in parsers.
+A traditional approach is to use \emph{monad transformers} to add each effect in turn, producing a complicated monad that incorporates all required operations~\cite{monad-transformers}.
+More recently, \emph{graded monads} were introduced as a way to indicate more precisely the effects used in a specific computation~\cite{effects-and-monads,embedding-effect-systems}.
+With some slight changes to the types of |Pure| and |_>>=_|, the |Free| monad can be viewed as graded over the free monoid |List Sig| generated by the type of effect signatures.
+Because the monad containing the computation is freely generated, it does not require us to assign any semantics to the effects ahead of time.
 
 % The partial correctness proof of |match| uses a specification expressed as a postcondition,
 % based on the inductive relation representing the language of a given regular expression.
