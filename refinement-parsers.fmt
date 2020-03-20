@@ -1,4 +1,3 @@
-
 %if style == poly
 %format (Forall(a)) = "\!\!"
 %format (implicit(a)) = "\!\!"
@@ -56,7 +55,6 @@
 %format ^^ = "\;"
 %format Set1 = Set
 %format forall = "\forall"
-%format do = "\ensuremath{\mathbf{do}}"
 %format _>>=_ = "\_\!\bind\!\_"
 %format _>=>_ = "\_\!>\!\!\!\!\mathbin{=}\!\!\!\!>\!\_"
 %format >=> = ">\!\!\!\!\mathbin{=}\!\!\!\!>"
@@ -154,8 +152,8 @@
 %format else = "\textrm{\bfseries else}"
 %format ⦃ = "\{\!\!\{\!"
 %format ⦄ = "\!\}\!\!\}"
-%format ∈Head = "\mathrm{\in\!\text{Head}}"
-%format ∈Tail = "\mathrm{\in\!\text{Tail}}"
+%format ∈Head = "\in\!\mathit{Head}"
+%format ∈Tail = "\in\!\mathit{Tail}"
 %format ≡ = "\equiv"
 %format _≡_ = "\_\!\equiv\!\_"
 %format ≡-step = "\equiv\text{-step}"
@@ -194,7 +192,7 @@
 %format ≡ = "\equiv"
 %format ⇔ = "\iff"
 %format _⇔_ = "\_\!" ⇔ "\!\_"
-%format ⇔-refl = "\mathsf{\iff\!-refl}"
+%format ⇔-refl = "\mathit{\iff\!\text{-}refl}"
 %format converseCompositionalitySpec = "\text{\itshape compositionalitySpec}^\prime"
 %format ≤-reflexive = "\text{\itshape $\le$-reflexive}"
 %format ≤-refl = "\text{\itshape $\le$-refl}"
@@ -204,10 +202,10 @@
 %format <⇒≱ = "<\rightarrow\not\ge"
 %format s≤s = "s\!\le\!s"
 %format z≤n = "z\!\le\!n"
-%format tree = "\text{\itshape Tree}"
+%format tree = "\mathit{Tree}"
 %format <$> = "\langle\$\rangle"
-%format terminates-in = "\text{\itshape terminates-in}"
-%format terminates-fmap = "\text{\itshape terminates-fmap}"
+%format terminates-in = "\mathit{terminates\text{-}in}"
+%format terminates-fmap = "\mathit{terminates\text{-}fmap}"
 %format == = "\equiv"
 %format · = "\cdot"
 %format _·_ = "\_\!\cdot\!\_"
@@ -224,6 +222,7 @@
 %format wpSpec' = "\llbracket \_ , \_ \rrbracket_{\text{spec}}"
 %format (wpFromProd (a) (b)) = "\llbracket" b "\rrbracket_{\text{fromProd}}\ " a
 %format Set₁ = Set
+%format hasNo* = "\mathit{hasNo\star}"
 %else
 %format (Forall (a)) = "forall { " a " } -> "
 %format (Exists (a) (b) (c)) = "Sigma " (b) " \ " a " -> " (c)

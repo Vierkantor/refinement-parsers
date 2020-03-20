@@ -211,7 +211,7 @@ Thus, |alg| has the form of a predicate transformer from postconditions of type
 
 Two considerations cause us to define the types as |alg : (c : C) → (R c → Set) → Set|
 and |(wp' alg) : Free (mkSig C R) a → (a → Set) → Set|.
-By having the command as first argument to |alg|, we allow |R| to depend on |C|.
+By passing the command |c : C| as first argument to |alg|, we allow |R| to depend on |c|.
 Moreover, |(wp' alg)| computes semantics,
 so it should take a program |S : Free (mkSig C R) a| as its argument
 and return the semantics of |S|, which is then of type |(a → Set) → Set|.
@@ -287,13 +287,13 @@ open import Data.Char using (Char; _≟_)
 String = List Char
 \end{code}
 %endif
-To illustrate how to reason about non-deterministic code, we begin by
-defining a regular expression matcher. Initially, we will restrict
+To illustrate how to reason about non-deterministic code, we will
+define and verify a regular expression matcher. Initially, we will restrict
 ourselves to non-recursive regular expressions; we will add recursion
 in the next section.
 
-We begin by defining the |Regex| datatype for regular expressions as
-follows: An element of this type represents the syntax of a regular expression.
+We begin by defining the |Regex| datatype for regular expressions.
+An element of this type represents the syntax of a regular expression.
 % Introduce formatting for the * operator later, to avoid confusion with multiplication.
 %if style == poly
 %format _* = "\_\!\mathbin{\star}"
@@ -308,7 +308,7 @@ data Regex : Set where
   _·_        : Regex -> Regex -> Regex
   _*         : Regex -> Regex
 \end{code}
-Note that the |Empty| regular expression corresponds to the empty
+The |Empty| regular expression corresponds to the empty
 language, while the |Epsilon| expression only matches the empty
 string. Furthermore, our language for regular expressions is closed
 under choice (|_∣_|), concatenation (|_·_|) and linear repetition
@@ -539,7 +539,7 @@ without ever terminating.
 As a result, we cannot implement |match| for the Kleene star using recursion directly.
 
 Instead, we will deal with this (possibly unbounded) recursion by introducing a new \emph{effect}.
-We will represent a recursively defined (dependent) function of type |(i : I) -> O i|
+We will represent a recursively defined dependent function of type |(i : I) -> O i|
 as an element of the type |(i : I) -> Free (Rec I O) (O i)|.
 Here |Rec I O| is a synonym of the the signature type we saw previously~\cite{McBride-totally-free}:
 \begin{code}
@@ -548,7 +548,7 @@ Rec I O = mkSig I O
 \end{code}
 Intuitively, you may want to think of values of type |(i : I) -> Free (Rec I O)
 (O i)| as computing a (finite) call graph for every input |i : I|. Instead of
-recursing directly, the `effects' that this signature supports require an input
+recurring directly, the `effects' that this signature supports require an input
 |i : I| corresponding to the argument of the recursive call; the continuation
 abstracts over a value of type |O i|, corresponding to the result of a
 recursive call. Note that the functions defined in this style are \emph{not}
@@ -677,7 +677,7 @@ module Stateless where
     constructor mkPT
     field
       pt    : (c : C e) → (R e c → Set) → Set
-      mono  : ∀ c P P' → P ⊆ P' → pt c P → pt c P'
+      mono  : ∀ c P P' → (∀ x -> P x -> P' x) → pt c P → pt c P'
 
   data PTs : List Sig -> Set₁ where
     Nil   : PTs Nil
@@ -968,7 +968,7 @@ Calling |Symbol| will return |just| the head of the unparsed remainder (advancin
   symbol ⦃ iP ⦄ = Op iP Symbol Pure
 \end{code}
 
-The code for the parser, |dmatch|, is now only a few lines long.  When the
+The code for the new parser, |dmatch|, is now only a few lines long.  When the
 input contains at least one character, we use the derivative to match the first
 character and recurse; when the input string is empty, we check that the
 expression matches the empty string.
@@ -1297,7 +1297,7 @@ continuation-passing style, is
 accepted by Agda's termination checker.
 
 Formally verified parsers for a more general class of languages have been developed before:
-\citet{total-parser-combinators, simple-functional-cfg-parsing, firsov-certification-context-free-grammars}, among others, have
+\citet{total-parser-combinators, firsov-certification-context-free-grammars, simple-functional-cfg-parsing}, among others, have
 previously shown how to verify parsers developed in a functional language.
 In these developments, semantics are defined specialized to the domain of parsing,
 while our semantics arise from combining a generic set of effect semantics.
@@ -1308,7 +1308,7 @@ The modularity of our setup allows us to separate partial and total correctness 
 
 There are various ways to represent a combination of effects such as used in parsers.
 A traditional approach is to use \emph{monad transformers} to add each effect in turn, producing a complicated monad that incorporates all required operations~\cite{monad-transformers}.
-More recently, \emph{graded monads} were introduced as a way to indicate more precisely the effects used in a specific computation~\cite{effects-and-monads,embedding-effect-systems}.
+More recently, \emph{graded monads} were introduced as a way to indicate more precisely the effects used in a specific computation~\cite{embedding-effect-systems,effects-and-monads}.
 With some slight changes to the types of |Pure| and |_>>=_|, the |Free| monad can be viewed as graded over the free monoid |List Sig| generated by the type of effect signatures.
 Because the monad containing the computation is freely generated, it does not require us to assign any semantics to the effects ahead of time.
 
@@ -1347,7 +1347,7 @@ order can result in different semantics.  We assign predicate transformer
 semantics to a combination of effects all at once, specifying their interaction
 explicitly---but we would still like to explore how to handle effects
 one-by-one, allowing for greater flexibility when assigning semantics to
-effectful programs~\cite{effect-handlers-in-scope,modular-algebraic-effects}.
+effectful programs~\cite{modular-algebraic-effects, effect-handlers-in-scope}.
 
 % Can we assign semantics to effects one by one, such that they interact in a similar way as handlers do? 
 % Still, the choice to verify

@@ -1,6 +1,6 @@
 default : refinement-parsers.pdf
 
-%.tex : %.lagda preamble.tex
+%.tex : %.lagda preamble.tex %.fmt
 	lhs2TeX --agda --poly -o $@ $<
 
 %.pdf : %.tex
