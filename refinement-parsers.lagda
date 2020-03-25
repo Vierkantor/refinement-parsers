@@ -30,11 +30,11 @@ P ⊆ Q = ∀ x -> P x -> Q x
 
 \title{Combining predicate transformer semantics for effects:\\a case study in parsing regular languages}
 \def\titlerunning{Combining predicate transformer semantics for effects}
-\def\authorrunning{Tim Baanen and Wouter Swierstra}
+\def\authorrunning{Anne Baanen and Wouter Swierstra}
 % Of misschien iets als:
 % A predicate transformer semantics for parsing
 % Verifying parser combinators using predicate transformers
-\author{Tim Baanen
+\author{Anne Baanen
   \institute{Vrije Universiteit Amsterdam}
     \and
     Wouter Swierstra
@@ -190,7 +190,7 @@ literature~\cite{algebraic-operations-and-generic-effects}:
   choice S₁ S₂ = Op Choice (λ b -> if b then S₁ else S₂)
 \end{code}
 The empty parentheses |()| in the definition of |fail| are Agda syntax for an argument
-that in an uninhabited type, hence no body for the lambda is provided.
+in an uninhabited type, hence no body for the lambda is provided.
 
 In this paper, we will assign \emph{semantics} to effectful programs
 by mapping them to \emph{predicate transformers}.
@@ -690,7 +690,7 @@ but also a proof that this predicate transformer is
 \emph{monotone}. Several lemmas throughout this paper, such as the
 |terminates-fmap| lemma of Section~\ref{sec:dmatch-correct}, rely on the monotonicity of the
 underlying predicate transformers;
-for each semantics we present the proof of monotonicity is immediate.
+for each semantics we present, the proof of monotonicity is immediate.
 
 Given such a list of predicate transformers,
 defining the semantics of an effectful program is a straightforward generalization of the previously defined semantics.
@@ -992,7 +992,7 @@ Here, |maybe f y| takes a |Maybe| value and applies |f| to the value in |just|, 
 Although the parser is easily seen to terminate in the intended semantics
 (since a character is removed from the input string between each recursive
 call), a semantics where the call to |symbol| always returns |just| a character
-causes |dmatch| to diverge.  As the termination of |dmatch| is not a syntactical
+causes |dmatch| to diverge. The termination of |dmatch| is not a syntactical
 property, as reflected by the use of the recursive |call| in its definition,
 and the custom arrow used in the type of functions defined using general recursion.
 
@@ -1014,7 +1014,7 @@ To illustrate how the semantics mesh well with other forms of semantics,
 we do \emph{not} use |ptParser| as semantics for |Parser| in the remainder.
 We give denotational semantics, in the form of an \emph{effect handler} for |Parser|~\cite{algebraic-effect-handlers,effect-handlers-in-scope}:
 \begin{code}
-  hParser : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ -> (c : CParser) -> String -> Free es (RParser c × String)
+  hParser : (Forall(es)) ⦃ iND : Nondet ∈ es ⦄ (c : CParser) -> String -> Free es (RParser c × String)
   hParser Symbol Nil        = Pure (nothing  , Nil)
   hParser Symbol (x :: xs)  = Pure (just x   , xs)
 \end{code}
@@ -1282,7 +1282,7 @@ correct parser for regular languages.
 \section{Discussion}
 
 \subsection*{Related work}
-The refinement calculus has traditionally been used in the verification of imperative programs~\cite{prog-from-spec}.
+The refinement calculus has traditionally been used to verify imperative programs~\cite{prog-from-spec}.
 In this paper, however, we show how many of the ideas from the refinement calculus can also be used in the verification of functional programs~\cite{pt-semantics-for-effects}.
 The \emph{Dijkstra monad}, introduced in the language F$\star$, also uses a predicate transformer semantics for verifying effectful programs
 by collecting the proof obligations for verification~\cite{dijkstra-monad, dijkstra-monads-for-free, dijkstra-monads-for-all}.
