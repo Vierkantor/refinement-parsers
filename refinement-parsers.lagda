@@ -7,6 +7,7 @@
 
 \usepackage[style=numeric,natbib=true]{biblatex}
 \addbibresource{handlers.bib}
+\setcounter{biburlnumpenalty}{100}
 
 %include agda.fmt
 %include refinement-parsers.fmt
@@ -59,7 +60,7 @@ of program syntax, correctness proofs and termination proofs.
 \label{sec:intro}
 
 There is a significant body of work on parsing using combinators
-in functional programming languages~\cite{list-of-successes, hutton, functional-parsers, swierstra-duponcheel, leijen2001parsec, efficient-combinator-parsers, parser-combinators-for-left-recursive, parsing-with-derivatives}, among many others.
+in functional programming langua\-ges~\cite{list-of-successes, hutton, functional-parsers, swierstra-duponcheel, leijen2001parsec, efficient-combinator-parsers, parser-combinators-for-left-recursive, parsing-with-derivatives}, among many others.
 Yet how can we ensure that these parsers are correct? There is notably
 less work that attempts to  answer this
 question~\cite{total-parser-combinators, firsov-certification-context-free-grammars}.
@@ -210,7 +211,7 @@ Thus, |alg| has the form of a predicate transformer from postconditions of type
 % The type of |(wp' alg)| under the same isomorphism becomes
 % |(a -> Set) -> (Free e a → Set)|.
 
-Two considerations cause us to define the types as |alg : (c : C) → (R c → Set) → Set|
+Two considerations lead us to define the types as |alg : (c : C) → (R c → Set) → Set|
 and |(wp' alg) : Free (mkSig C R) a → (a → Set) → Set|.
 By passing the command |c : C| as first argument to |alg|, we allow |R| to depend on |c|.
 Moreover, |(wp' alg)| computes semantics,
@@ -246,7 +247,7 @@ Predicate transformers provide a single semantic domain to relate
 programs and specifications~\cite{prog-from-spec}.
 Throughout this paper, we will consider specifications consisting of a
 pre- and postcondition:
-
+\begin{samepage}
 \begin{code}
   record Spec (a : Set) : Set₁ where
     constructor [[_,_]]
@@ -254,6 +255,7 @@ pre- and postcondition:
       pre : Set
       post : a -> Set
 \end{code}
+\end{samepage}
 Inspired by work on the refinement calculus, we can assign a predicate
 transformer semantics to specifications as follows:
 \begin{code}
@@ -680,11 +682,14 @@ module Stateless where
     field
       pt    : (c : C e) → (R e c → Set) → Set
       mono  : ∀ c P P' → (∀ x -> P x -> P' x) → pt c P → pt c P'
-
+\end{code}
+\begin{samepage}
+\begin{code}
   data PTs : List Sig -> Set₁ where
     Nil   : PTs Nil
     _::_  : (Forall(e es)) PT e -> PTs es -> PTs (e :: es)
 \end{code}
+\end{samepage}
 The record type |PT| not only contains a predicate transformer |pt|,
 but also a proof that this predicate transformer is
 \emph{monotone}. Several lemmas throughout this paper, such as the
@@ -715,8 +720,8 @@ This results in the following definition of the semantics for combinations of ef
 \end{code}
 
 The effects that we will use for our |match| function consist of a
-combination of nondeterminism and general recursion.  Although we can
-reuse the |ptAll| semantics of nondeterminism, we have not yet given
+combination of non-determinism and general recursion.  Although we can
+reuse the |ptAll| semantics of non-determinism, we have not yet given
 the semantics for recursion.  However, it is not as easy to give a
 predicate transformer semantics for recursion in general, since the
 intended semantics of a recursive call depend on the function that is
@@ -779,14 +784,16 @@ The types become:
 Since the index argument to the smart constructor is inferred by Agda,
 the only change in the definition of |match| and |allSplits| will be
 that |match| now does have a meaningful branch for the Kleene star case:
+\begin{samepage}
 \begin{code}
   match ((r *) , Nil) = Pure Nil
   match ((r *) , xs@(_ :: _)) = do
     (y , ys) <- call (hiddenInstance(∈Head)) ((r · (r *)) , xs)
     Pure (y :: ys)
 \end{code}
+\end{samepage}
 
-The effects we need to use for running |match| are a combination of nondeterminism and general recursion.
+The effects we need to use for running |match| are a combination of non-determinism and general recursion.
 As discussed, we first need to give the specification for |match| before we can verify a program that performs a recursive |call| to |match|.
 %if style == newcode
 \begin{code}
@@ -918,6 +925,7 @@ Following \citet{Brzozowski}, we use a helper function |matchEpsilon| that decid
 \end{code}
 %endif
 The definition of |matchEpsilon| is given by structural recursion on the regular expression, just as the derivative operator is:
+\begin{samepage}
 \begin{code}
   d_/d_ : Regex -> Char -> Regex
   d Empty        /d c    = Empty
@@ -931,6 +939,7 @@ The definition of |matchEpsilon| is given by structural recursion on the regular
   d l ∣ r        /d c    = (d l /d c) ∣ (d r /d c)
   d r *          /d c    = (d r /d c) · (r *)
 \end{code}
+\end{samepage}
 
 To use the derivative of |r| to compute a parse tree for |r|,
 we need to be able to convert a tree for |d r /d x| to a tree for |r|.
@@ -1127,7 +1136,7 @@ Apart from termination, correctness consists of soundness and completeness: the
 parse trees returned by |dmatch| should satisfy the specification given by
 the original |Match| relation, and for any string that matches the regular
 expression, |dmatch| should return a parse tree.  In the |ptAll| semantics, a
-nondeterministic program |S| is refined by |T| if and only if the output values
+non-deterministic program |S| is refined by |T| if and only if the output values
 of |T| are a subset of the output values of |S|; conversely |S| is refined by
 |T| in the |ptAny| semantics if and only if the output values of |S| are a
 subset of the output values of |T|. These properties allow us to express
@@ -1187,7 +1196,7 @@ Using the preceding lemmas, we can prove the partial correctness of |dmatch|.
   dmatchSound : ∀ r xs -> (wpMatch (match (hiddenInstance(∈Head)) (r , xs))) ⊑ (wpMatch (dmatch' (hiddenInstance(∈Head)) (r , xs)))
 \end{code}
 Since we need to perform the case distinctions of |match| and of |dmatch|,
-the proof is longer than that of |matchSoundness|.
+the proof is longer than that of |matchSound|.
 Despite the length, most of it consists of this case distinction,
 then giving a simple argument for each case.
 %if style == newcode
@@ -1316,7 +1325,7 @@ As this monad containing the computation is freely generated, it does not requir
 
 % The partial correctness proof of |match| uses a specification expressed as a postcondition,
 % based on the inductive relation representing the language of a given regular expression.
-% Where we use nondeterminism to handle the concatenation operator,
+% Where we use non-determinism to handle the concatenation operator,
 % \citeauthor{harper-regex} uses a continuation-passing parser for control flow.
 % Since the continuations take the unparsed remainder of the string,
 % they correspond almost directly to the |Parser| effect we introduce later.
