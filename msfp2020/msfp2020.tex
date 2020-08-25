@@ -25,23 +25,6 @@
 \begin{document}
 
 \titlepage
-
-\begin{frame}{The history}
-
-\emph{Predicate transformer semantics} for imperative programs have been around for 45 years.
-A statement becomes a map from postcondition (a predicate on the state space) to the weakest precondition that ensures the postcondition will be satisfied.
-
-\pause
-
-\emph{Parser combinators} have been around in functional programming for 35 years.
-Parsing becomes an effectful (monadic) operation, nondeterministically modifying state (the unparsed part of the string).
-
-\pause
-
-\emph{Algebraic effects} have recently gained traction in the programming language community.
-
-\end{frame}
-
 \begin{frame}[fragile]{Algebraic effects}
 
 Algebraic effects separate the syntax and semantics of effects.
@@ -55,13 +38,24 @@ Algebraic effects separate the syntax and semantics of effects.
 data Free (C : Set) (R : C -> Set) : Set -> Set where
 	Pure : a -> Free C R a
 	Op : (c : C) -> (k : R c -> Free C R a) -> Free C R a
+\end{minted}
+\end{frame}
 
+\begin{frame}[fragile]{Example: Nondeterminism}
+
+\Agda{Nondet} has two primitive operations:
+\begin{itemize}
+    \item \Agda{Choice} chooses between two values
+    \item \Agda{Fail} goes to a failure state and stops execution
+\end{itemize}
+\begin{minted}{Agda}
 data CNondet where
-	Fail : CNondet
 	Choice : CNondet
+	Fail : CNondet
+
 RNondet : CNondet -> Set
-RNondet Fail = ⊥
 RNondet Choice = Bool
+RNondet Fail = ⊥
 
 Nondet = Free CNondet RNondet
 \end{minted}
@@ -69,16 +63,15 @@ Nondet = Free CNondet RNondet
 
 \begin{frame}[fragile]{Semantics for algebraic effects}
 \emph{Handlers} give semantics for the \Free monad naturally as a fold:
-
 \begin{minted}{Agda}
 handleList : Nondet a -> List a
 handleList (Pure x) = [x]
-handleList (Op Fail k) = []
 handleList (Op Choice k) = k True ++ k False
+handleList (Op Fail k) = []
 \end{minted}
 
+\pause
 The generic fold that computes a predicate of type \Set:
-
 \begin{minted}{Agda}
 [[_]] : Free C R a -> ((c : C) -> (R c -> Set))
       -> (a -> Set) -> Set
@@ -121,8 +114,8 @@ ptAny Choice k = k True ∨ k False
 \end{frame}
 
 \begin{frame}[fragile]{Parsing regular expressions}
-
-Consider the following syntax of regular expressions and their parse trees:
+To illustrate these semantics, we wrote a parser.
+The input is a regular expression and a \Agda{String}, and the output a parse tree.
 \begin{minted}{Agda}
 data Regex : Set where
     Empty : Regex
@@ -133,35 +126,36 @@ data Regex : Set where
     _ * : Regex → Regex
 
 Tree : Regex -> Set
-Tree Empty = ⊥
-Tree Epsilon = ⊤
+Tree Empty         = ⊥
+Tree Epsilon       = ⊤
 Tree (Singleton _) = Char
-Tree (l | r) = Either (Tree l) (Tree r)
-Tree (l · r) = Pair (Tree l) (Tree r)
-Tree (r *) = List (Tree r)
+Tree (l | r)       = Either (Tree l) (Tree r)
+Tree (l · r)       = Pair (Tree l) (Tree r)
+Tree (r *)         = List (Tree r)
 \end{minted}
-
-Let's write a parser returning these \Agda{Tree}s.
 \end{frame}
 
 \begin{frame}[fragile]{Parsing regular expressions}
-A nondeterministic \Regex matcher is straightforward to write:
 \begin{minted}{Agda}
 match : (r : Regex) -> String -> Nondet (Tree r)
-match Empty xs = Op Fail λ()
-match Epsilon Nil = Pure tt
-match Epsilon (_ :: _) = Op Fail λ()
-match (Singleton c) xs =
+match Empty         xs       = Op Fail λ()
+match Epsilon       Nil      = Pure tt
+match Epsilon       (_ :: _) = Op Fail λ()
+match (Singleton c) xs       =
     if xs = [c] then Pure c else Op Fail λ()
-match (l | r) xs = Op Choice (λ b,
+
+match (l | r)       xs       = Op Choice (λ b ->
     if b then Inl <$> match l xs else Inr <$> match r xs)
+
 match (l · r) xs = do
     (ys, zs) <- allSplits xs
     (,) <$> match l ys <*> match r zs
 \end{minted}
+Looks straightforward so far...
 
 \pause
 ... until we reach the last case:
+\vspace{-\baselineskip}
 \begin{minted}{Agda}
 match (r *) xs = match (r · (r *)) xs
     -- Error: does not terminate
@@ -194,28 +188,26 @@ And check that \Agda{match} \emph{refines} this specification.
 
 \begin{frame}[fragile]{Refinement calculus}
 
-A predicate transformer \Agda{pt1} \emph{is refined by} \Agda{pt2} if \Agda{pt₂} satisfies more postconditions than \Agda{pt₁}:
+A predicate transformer \Agda{pt1} \emph{is refined by} \Agda{pt2} if \Agda{pt2} satisfies more postconditions than \Agda{pt1}:
 \vspace{-\baselineskip}
 \begin{minted}{Agda}
 _⊑_ : (pt1 pt2 : (a -> Set) -> Set) -> Set
 pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
 \end{minted}
 
-The relation \Agda{S ⊑ T} expresses that the program \Agda{T} is ``better'' than \Agda{S}:
+\Agda{S ⊑ T} expresses that \Agda{T} is ``better'' than \Agda{S}:
 \Agda{S} can be replaced with \Agda{T} everywhere, and all postconditions will still hold.
 
 \vspace{\baselineskip}
 
+\pause
 
-By assigning a predicate transformer to specifications, we can also relate specifications and programs:
+Predicate transformers are a semantic domain where programs and specifications can be related.
 \vspace{-\baselineskip}
 \begin{minted}{Agda}
 [[_,_]] : (pre : Set) (post : a -> Set) -> (a -> Set) -> Set
 [[ pre , post ]] P = pre ∧ ∀ x, post x -> P x
 \end{minted}
-
-This is the `weakest precondition' necessary so that the desired post- condition \Agda{P} holds:
-\Agda{pre} should hold and any result satisfying \Agda{post} should imply the postcondition \Agda{P}.
 
 \end{frame}
 
@@ -240,16 +232,17 @@ consequence : ∀ pt (S : Free es a) (f : a → Free es b) →
 \end{frame}
 
 \begin{frame}[fragile]{Adding effects}
-The problem with \match is that implementing the Kleene star requires the effect of \emph{general recursion}.
+The problem with \match is that implementing the Kleene star also requires the effect of \emph{general recursion}.
 
 We can add more effects to the free monad by choosing the command and response types from a list of \emph{effect signatures}:
 \begin{minted}{Agda}
 data Free (es : List Sig) : Set -> Set where
-	Pure : a -> Free es a
-	Op : (i : mkSig C R ∈ es) (c : C) -> (k : R c -> Free C R a) -> Free C R a
+    Pure : a -> Free es a
+    Op : (i : mkSig C R ∈ es) (c : C)
+         (k : R c -> Free C R a) -> Free C R a
 \end{minted}
 
-We will add two new effects along with nondeterminism: general recursion and parsing.
+We will add two new effects: general recursion and parsing.
 \end{frame}
 
 \begin{frame}[fragile]{Adding effects}
@@ -275,8 +268,8 @@ Parser : Sig
 Parser = mkSig ⊤ (λ _ -> Maybe Char)
 \end{minted}
 
-The semantics of \Agda{Parser} are stateful: returning the next character of the input string requires keeping track of the remaining characters.
-This state can be found in the \Agda{ptParser} semantics as an extra argument to the predicates.
+\Agda{Parser} has stateful semantics: to return the next character, we need to keep track of the remaining characters.
+The state is the extra \Agda{String} arguments in \Agda{ptParser}.
 \begin{minted}{Agda}
 ptParser : ⊤ -> (Maybe Char -> String -> Set) -> String -> Set
 ptParser _ P Nil = P Nothing Nil
@@ -285,33 +278,91 @@ ptParser _ P (x :: xs) = P (Just x) xs
 
 \end{frame}
 
-\begin{frame}[fragile]{Defining a derivative-based matcher}
+\begin{frame}[fragile]{Extending \match}
+
+Now we can finish the definition and prove soundness unconditionally:
 \begin{minted}{Agda}
-dmatch : (Forall(es)) ⦃ iP : Parser ∈ es ⦄ ⦃ iND : Nondet ∈ es ⦄  -> (RecArr Regex es tree)
-dmatch r = symbol >>= maybe
-    (λ x -> integralTree r <$> call (hiddenInstance(∈Head)) (d r /d x))
-    (if p <- matchEpsilon r then Pure (Sigma.fst p) else (hiddenConst(fail)))
+match (r *) = Op iRec (r · (r *))
+
+matchSound : (r : Regex) (xs : String) ->
+    [[ ⊤ , post r xs ]] ⊑ [[ match r xs ]]
 \end{minted}
+
+\pause
+\match still does not terminate if \Agda{r} matches the empty string, our result is only \emph{partial correctness}.\\
+\Agda{ptRec} computes the WLP: all recursive calls immediately return.
 \end{frame}
 
+\begin{frame}[fragile]{Defining a derivative-based matcher}
+To guarantee termination, use recursion on \Agda{xs} rather than \Agda{r}.\\
+The \emph{Brzozowski derivative} \Agda{d r /d x} matches \Agda{xs} iff \Agda{r} matches \Agda{x :: xs};\\ \Agda{integralTree r : tree (d r /d x) -> tree r} ``integrates'' parse trees.
+
+\begin{minted}{Agda}
+dmatch : (r : Regex) -> Free es (tree r)
+dmatch r = symbol >>= maybe
+    (λ x -> Op iRec (d r /d x) (integralTree r))
+    (if p <- matchEpsilon r
+     then Pure (Sigma.fst p)
+     else Op iND Fail λ())
+\end{minted}
+
+\pause
+
+\begin{minted}{Agda}
+dmatchSound : ∀ r xs -> [[ match r xs ]] ⊑ [[ dmatch r xs ]]
+\end{minted}
+\end{frame}
 
 \begin{frame}[fragile]{Termination checking}
+\Agda{ptRec} gives weakest liberal precondition semantics.
+For total correctness, we should check termination.
+
+\vspace{\baselineskip}
+\Agda{terminates-in f S n} holds iff \Agda{S} terminates after calling \Agda{f} at most \Agda{n} times.
+\vspace{-\baselineskip}
+
 \begin{minted}{Agda}
-terminates-in : (Forall(I O es a)) (pts : PTs es) (f : (RecArr I es O)) (S : Free (Rec I O :: es) a) → Nat → Set
-terminates-in pts f (Pure x)            n         = ⊤
-terminates-in pts f (Op ∈Head c k)      Zero      = ⊥
-terminates-in pts f (Op ∈Head c k)      (Succ n)  = terminates-in pts f (f c >>= k) n
-terminates-in pts f (Op (∈Tail i) c k)   n        =
-    lookupPT pts i c (λ x → terminates-in pts f (k x) n)
+terminates-in : (f : (i : I) -> Free (Rec I O :: es) (O i))
+    (S : Free (Rec I O :: es) a) → ℕ → Set
+terminates-in f (Pure x)           n        = ⊤
+terminates-in f (Op ∈Head c k)     Zero     = ⊥
+terminates-in f (Op ∈Head c k)     (Succ n) =
+    terminates-in pt f (f c >>= k) n
+terminates-in f (Op (∈Tail i) c k) n        =
+    pts i c (λ x → terminates-in f (k x) n)
 \end{minted}
 \end{frame}
 
+\begin{frame}[fragile]{Total correctness}
 
-\begin{frame}[fragile]{Refining \match with \Agda{dmatch}}
+Partial correctness of \Agda{dmatch} follows from the chain of refinements:
 \begin{minted}{Agda}
-dmatchSound : ∀ r xs -> (wpMatch (match (hiddenInstance(∈Head)) (r , xs))) ⊑ (wpMatch (dmatch' (hiddenInstance(∈Head)) (r , xs)))
+[[ ⊤ , post r xs ]]
+    ⊑ [[ match r xs ]]
+    ⊑ [[ dmatch r xs ]]
+    ⊑ [[ ⊤ , post r xs ]]
 \end{minted}
+together with a proof of termination:
+\begin{minted}{Agda}
+dmatchTerminates : (r : Regex) (xs : String) ->
+    terminates-in dmatch (dmatch r xs) (length xs)
+\end{minted}
+
 \end{frame}
 
+\begin{frame}{Discussion}
+
+In our paper, we illustrate how techniques from the refinement calculus can be used in functional programming.
+A distinguishing characteristic of our approach is modularity:
+we add new effects and semantics to the system as we need them.
+
+Formally verified parsers have been developed before,
+using specialized semantics to the domain of parsing.
+The modularity of predicate transformers allow us to reason about effects uniformly.
+
+Most existing approaches to recursion in parsers deal with termination syntactically.
+Separation of syntax and semantics also cleanly separates partial and total correctness.
+
+\end{frame}
 
 \end{document}
