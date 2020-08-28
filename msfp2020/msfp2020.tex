@@ -1,30 +1,169 @@
-\documentclass{beamer}
+\documentclass[ignorenonframetext,]{beamer}
+\setbeamertemplate{caption}[numbered]
+\setbeamertemplate{caption label separator}{: }
+\setbeamercolor{caption name}{fg=normal text.fg}
+\beamertemplatenavigationsymbolsempty
+\usepackage{lmodern}
+\usepackage{amssymb,amsmath}
+\usepackage{ifxetex,ifluatex}
+\usepackage{fixltx2e} % provides \textsubscript
+%%W: moved up to allow to be overriden
+\usetheme[]{metropolis}
+\usefonttheme{serif} % use mainfont rather than sansfont for slide text
+%End
+% \ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+%   \usepackage[T1]{fontenc}
+%   \usepackage[utf8]{inputenc}
+% % \else % if luatex or xelatex
+%   \ifxetex
+%     \usepackage{mathspec}
+%   \else
+    \usepackage{fontspec}
+  % \fi
+  % \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+    \setmainfont[Scale=0.8]{Open Sans}
+    \setsansfont[Scale=0.8]{Open Sans}
+    \setmonofont[Mapping=tex-ansi,Scale=0.8]{Droid Sans Mono}
+%\fi
+% use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+% use microtype if available
+\IfFileExists{microtype.sty}{%
+\usepackage{microtype}
+\UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\newif\ifbibliography
 
-\usepackage{fontspec}
+\usepackage{color}
+\usepackage{fancyvrb}
+\newcommand{\VerbBar}{|}
+\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\newenvironment{Shaded}{}{}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{1.00,0.00,0.00}{\textbf{#1}}}
+\newcommand{\AnnotationTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textbf{\textit{#1}}}}
+\newcommand{\AttributeTok}[1]{\textcolor[rgb]{0.49,0.56,0.16}{#1}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.25,0.63,0.44}{#1}}
+\newcommand{\BuiltInTok}[1]{#1}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{#1}}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textit{#1}}}
+\newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textbf{\textit{#1}}}}
+\newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.53,0.00,0.00}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.00,0.44,0.13}{\textbf{#1}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.56,0.13,0.00}{#1}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.25,0.63,0.44}{#1}}
+\newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.73,0.13,0.13}{\textit{#1}}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{1.00,0.00,0.00}{\textbf{#1}}}
+\newcommand{\ExtensionTok}[1]{#1}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.25,0.63,0.44}{#1}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.02,0.16,0.49}{#1}}
+\newcommand{\ImportTok}[1]{#1}
+\newcommand{\InformationTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textbf{\textit{#1}}}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.00,0.44,0.13}{\textbf{#1}}}
+\newcommand{\NormalTok}[1]{#1}
+\newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.40,0.40,0.40}{#1}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.00,0.44,0.13}{#1}}
+\newcommand{\PreprocessorTok}[1]{\textcolor[rgb]{0.74,0.48,0.00}{#1}}
+\newcommand{\RegionMarkerTok}[1]{#1}
+\newcommand{\SpecialCharTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{#1}}
+\newcommand{\SpecialStringTok}[1]{\textcolor[rgb]{0.73,0.40,0.53}{#1}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{#1}}
+\newcommand{\VariableTok}[1]{\textcolor[rgb]{0.10,0.09,0.49}{#1}}
+\newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{#1}}
+\newcommand{\WarningTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textbf{\textit{#1}}}}
+
+%% UU Specific colors
+\definecolor{main}{RGB}{60,67,149}
+\definecolor{text}{RGB}{30,34,75}
+\definecolor{background}{RGB}{255,255,255}
+
+\definecolor{alert}{RGB}{0,159,227}
+\definecolor{example}{RGB}{60,67,149}
+
+%\definecolor{uuRed}{RGB}{192,10,53}
+%\definecolor{uuYellow}{RGB}{255,205,0}
+%\definecolor{darkGrey}{RGB}{64,64,64}
+%\definecolor{almostBlack}{RGB}{26,26,26}
+
+%\definecolor{uuCreme}{RGB}{249,230,173}
+%\definecolor{uuOrange}{RGB}{221,149,98}
+%\definecolor{uuBordeaux}{RGB}{146,30,86}
+%\definecolor{uuBrown}{RGB}{99,63,43}
+%\definecolor{uuGreen}{RGB}{99,165,147}
+%\definecolor{uuBlue}{RGB}{102,135,195}
+%\definecolor{uuDarkBlue}{RGB}{23,29,66}
+%\definecolor{uuPurple}{RGB}{82,41,128}
+
+\setbeamercolor{normal text}{fg=text, bg=white}
+\setbeamercolor{alerted text}{fg=alert}
+\setbeamercolor{example text}{fg=text}
+\setbeamercolor{frametitle}{bg=main,fg=white}
+\setbeamercolor{palette primary}{%
+   use=normal text
+  ,fg=white
+  ,bg=main
+  }
+
+\titlegraphic{\hfill\includegraphics[height=1.5cm]{img/vu.png}\includegraphics[height=1.5cm]{img/uulogo.png}}
+
+% Prevent slide breaks in the middle of a paragraph:
+\widowpenalties 1 10000
+\raggedbottom
+
+\AtBeginPart{
+  \let\insertpartnumber\relax
+  \let\partname\relax
+  \frame{\partpage}
+}
+\AtBeginSection{
+  \ifbibliography
+  \else
+    \let\insertsectionnumber\relax
+    \let\sectionname\relax
+    \frame{\sectionpage}
+  \fi
+}
+\AtBeginSubsection{
+  \let\insertsubsectionnumber\relax
+  \let\subsectionname\relax
+  \frame{\subsectionpage}
+}
+
+\setlength{\emergencystretch}{3em}  % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{0}
+
 \usepackage{minted}
 \usepackage{xspace}
 
-\setmainfont{TeX Gyre Heros}
-\setmonofont{Noto Sans Mono}
-\usetheme{Madrid}
+%\setmainfont{TeX Gyre Heros}
+\setmonofont[Scale=0.8]{Noto Sans Mono}
+%\usetheme{Madrid}
 
-\let \parskip=\baselineskip
-\setminted{fontsize=\footnotesize}
+% Make blocks of code appear a bit more cohesive by putting the lines closer together.
+\linespread{0.95}
 
-\newcommand{\Agda}[1]{\texttt{\footnotesize #1}\xspace}
+\newcommand{\Agda}[1]{\texttt{#1}\xspace}
 \newcommand{\Free}{\Agda{Free}}
 \newcommand{\match}{\Agda{match}}
 \newcommand{\Nondet}{\Agda{Nondet}}
 \newcommand{\Regex}{\Agda{Regex}}
 \newcommand{\Set}{\Agda{Set}}
 
-\title[Combining predicate transformer semantics]{Combining predicate transformer semantics for effects: a case study in parsing regular languages}
-\author{Anne Baanen \and Wouter Swierstra}
+\title[Combining predicate transformer semantics]{Combining predicate transformer semantics for effects}
+\subtitle{A case study in parsing regular languages}
+\author{Anne Baanen \hspace{5.1em} Wouter Swierstra}
+\institute{Vrije Universiteit Amsterdam \hspace{1em} Utrecht University}
 \date{September 1, 2020}
+
+\date{}
 
 \begin{document}
 
-\titlepage
+\frame{\titlepage}
+
 \begin{frame}[fragile]{Algebraic effects}
 
 Algebraic effects separate the syntax and semantics of effects.
@@ -34,10 +173,12 @@ Algebraic effects separate the syntax and semantics of effects.
 	\item The semantics assigns meaning to these operations
 \end{itemize}
 
+In this work, we use a free monad to model effectful programs:
+
 \begin{minted}{Agda}
 data Free (C : Set) (R : C -> Set) : Set -> Set where
-	Pure : a -> Free C R a
-	Op : (c : C) -> (k : R c -> Free C R a) -> Free C R a
+    Pure : a -> Free C R a
+    Op : (c : C) -> (k : R c -> Free C R a) -> Free C R a
 \end{minted}
 \end{frame}
 
@@ -83,7 +224,7 @@ The generic fold that computes a predicate of type \Set:
 \begin{frame}[fragile]{Predicate transformer semantics}
 
 A predicate transformer for commands \Agda{C} and responses \Agda{R}
-is a function from postconditions of type \Agda{R -> Set} to preconditions of type \Agda{C -> Set}.
+is a function from postconditions of type \Agda{R -> Set} to preconditions of type \Agda{C -> Set}.\\
 If \Agda{R} depends on \Agda{C}, this becomes:
 
 \begin{minted}{Agda}
@@ -136,40 +277,47 @@ Tree (r *)         = List (Tree r)
 \end{frame}
 
 \begin{frame}[fragile]{Parsing regular expressions}
+
+We implement \match as a case distinction.
 \begin{minted}{Agda}
 match : (r : Regex) -> String -> Nondet (Tree r)
 match Empty         xs       = Op Fail λ()
+\end{minted}
+\pause \vspace{-\baselineskip}
+\begin{minted}{Agda}
 match Epsilon       Nil      = Pure tt
 match Epsilon       (_ :: _) = Op Fail λ()
+\end{minted}
+\pause \vspace{-\baselineskip}
+\begin{minted}{Agda}
 match (Singleton c) xs       =
     if xs = [c] then Pure c else Op Fail λ()
-
+\end{minted}
+\pause \vspace{-\baselineskip}
+\begin{minted}{Agda}
 match (l | r)       xs       = Op Choice (λ b ->
     if b then Inl <$> match l xs else Inr <$> match r xs)
-
+\end{minted}
+\pause \vspace{-\baselineskip}
+\begin{minted}{Agda}
 match (l · r) xs = do
     (ys, zs) <- allSplits xs
     (,) <$> match l ys <*> match r zs
 \end{minted}
-Looks straightforward so far...
-
-\pause
-... until we reach the last case:
-\vspace{-\baselineskip}
+\pause \vspace{-\baselineskip}
 \begin{minted}{Agda}
 match (r *) xs = match (r · (r *)) xs
-    -- Error: does not terminate
 \end{minted}
+\pause
+\alert{Error: \Agda{match (r *) xs} does not terminate}
 
 \end{frame}
 
 \begin{frame}[fragile]{Parsing regular expressions}
 For now, we will write:
-\vspace{-\baselineskip}
 \begin{minted}{Agda}
 match (r *) xs = Op Fail λ()
 \end{minted}
-\vspace{\baselineskip}
 
 \pause
 
@@ -189,7 +337,7 @@ And check that \Agda{match} \emph{refines} this specification.
 \begin{frame}[fragile]{Refinement calculus}
 
 A predicate transformer \Agda{pt1} \emph{is refined by} \Agda{pt2} if \Agda{pt2} satisfies more postconditions than \Agda{pt1}:
-\vspace{-\baselineskip}
+
 \begin{minted}{Agda}
 _⊑_ : (pt1 pt2 : (a -> Set) -> Set) -> Set
 pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
@@ -198,12 +346,9 @@ pt1 ⊑ pt2 = ∀ P -> pt1 P -> pt2 P
 \Agda{S ⊑ T} expresses that \Agda{T} is ``better'' than \Agda{S}:
 \Agda{S} can be replaced with \Agda{T} everywhere, and all postconditions will still hold.
 
-\vspace{\baselineskip}
-
 \pause
 
 Predicate transformers are a semantic domain where programs and specifications can be related.
-\vspace{-\baselineskip}
 \begin{minted}{Agda}
 [[_,_]] : (pre : Set) (post : a -> Set) -> (a -> Set) -> Set
 [[ pre , post ]] P = pre ∧ ∀ x, post x -> P x
@@ -246,7 +391,7 @@ We will add two new effects: general recursion and parsing.
 \end{frame}
 
 \begin{frame}[fragile]{Adding effects}
-The \Agda{Rec I O} effect represents a recursive function of type \Agda{(i : I) -> O i} calling itself.
+Inspired by McBride's \textit{Turing-Completeness Totally Free}, we use the \Agda{Rec I O} effect to represent a recursive function of type \Agda{(i : I) -> O i} calling itself.
 The commands are the arguments to the function and the responses are the returned values.
 \begin{minted}{Agda}
 Rec : (I : Set) (O : I -> Set) -> Sig
@@ -271,9 +416,9 @@ Parser = mkSig ⊤ (λ _ -> Maybe Char)
 \Agda{Parser} has stateful semantics: to return the next character, we need to keep track of the remaining characters.
 The state is the extra \Agda{String} arguments in \Agda{ptParser}.
 \begin{minted}{Agda}
-ptParser : ⊤ -> (Maybe Char -> String -> Set) -> String -> Set
-ptParser _ P Nil = P Nothing Nil
-ptParser _ P (x :: xs) = P (Just x) xs
+ptParser : (Maybe Char -> String -> Set) -> String -> Set
+ptParser P Nil = P Nothing Nil
+ptParser P (x :: xs) = P (Just x) xs
 \end{minted}
 
 \end{frame}
@@ -317,9 +462,7 @@ dmatchSound : ∀ r xs -> [[ match r xs ]] ⊑ [[ dmatch r xs ]]
 \Agda{ptRec} gives weakest liberal precondition semantics.
 For total correctness, we should check termination.
 
-\vspace{\baselineskip}
 \Agda{terminates-in f S n} holds iff \Agda{S} terminates after calling \Agda{f} at most \Agda{n} times.
-\vspace{-\baselineskip}
 
 \begin{minted}{Agda}
 terminates-in : (f : (i : I) -> Free (Rec I O :: es) (O i))
