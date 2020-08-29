@@ -410,7 +410,7 @@ module AlmostRegex where
                                             y <- match l ys
                                             z <- match r zs
                                             Pure (y , z)
-  match (r *) xs                      = fail
+  match (r *) xs                      = match (r · (r *)) xs
   \end{code}
   \caption{The definition of the |match| function}
   \label{fig:match}

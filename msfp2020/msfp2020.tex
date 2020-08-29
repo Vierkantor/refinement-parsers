@@ -219,6 +219,9 @@ The generic fold that computes a predicate of type \Set:
 [[ Pure x ]] alg P = P x
 [[ Op c k ]] alg P = alg c (λ x -> [[ k x ]] alg P)
 \end{minted}
+
+\pause
+Let us look at \Agda{alg : (c : C) -> (R c -> Set) -> Set}'s type.
 \end{frame}
 
 \begin{frame}[fragile]{Predicate transformer semantics}
@@ -306,7 +309,7 @@ match (l · r) xs = do
 \end{minted}
 \pause \vspace{-\baselineskip}
 \begin{minted}{Agda}
-match (r *) xs = match (r · (r *)) xs
+match (r *) xs = match (Epsilon | r · (r *)) xs
 \end{minted}
 \pause
 \alert{Error: \Agda{match (r *) xs} does not terminate}
@@ -370,8 +373,8 @@ The proof proceeds by case distinction and is uncomplicated, until we need to re
 
 The missing ingredient is the rule of consequence:
 \begin{minted}{Agda}
-consequence : ∀ pt (S : Free es a) (f : a → Free es b) →
-    [[ S ]] pt (λ x → [[ f x ]] pt P) ≡ [[ mx >>= f ]] pt P
+consequence : ∀ pt (S : Free es a) (f : a -> Free es b) ->
+    [[ S >>= f ]] pt P ≡ [[ S ]] pt (λ x -> [[ f x ]] pt P)
 \end{minted}
 
 \end{frame}
@@ -427,7 +430,7 @@ ptParser P (x :: xs) = P (Just x) xs
 
 Now we can finish the definition and prove soundness unconditionally:
 \begin{minted}{Agda}
-match (r *) = Op iRec (r · (r *))
+match (r *) = Op iRec (Epsilon | r · (r *)) eitherToList
 
 matchSound : (r : Regex) (xs : String) ->
     [[ ⊤ , post r xs ]] ⊑ [[ match r xs ]]
@@ -440,16 +443,18 @@ matchSound : (r : Regex) (xs : String) ->
 
 \begin{frame}[fragile]{Defining a derivative-based matcher}
 To guarantee termination, use recursion on \Agda{xs} rather than \Agda{r}.\\
-The \emph{Brzozowski derivative} \Agda{d r /d x} matches \Agda{xs} iff \Agda{r} matches \Agda{x :: xs};\\ \Agda{integralTree r : tree (d r /d x) -> tree r} ``integrates'' parse trees.
+The \emph{Brzozowski derivative} \Agda{d r /d x} matches \Agda{xs} iff \Agda{r} matches \Agda{x :: xs}.
 
 \begin{minted}{Agda}
-dmatch : (r : Regex) -> Free es (tree r)
-dmatch r = symbol >>= maybe
-    (λ x -> Op iRec (d r /d x) (integralTree r))
-    (if p <- matchEpsilon r
-     then Pure (Sigma.fst p)
-     else Op iND Fail λ())
+dmatch : (r : Regex) -> Free es (Tree r)
+dmatch r = Op iParse
+    λ { (Just x) -> Op iRec (d r /d x) (integralTree r)
+        Nothing  -> if p <- matchEpsilon r
+                    then Pure (Sigma.fst p)
+                    else Op iND Fail λ() }
 \end{minted}
+
+\Agda{integralTree r : tree (d r /d x) -> tree r} ``integrates'' parse trees.
 
 \pause
 
@@ -472,7 +477,7 @@ terminates-in f (Op ∈Head c k)     Zero     = ⊥
 terminates-in f (Op ∈Head c k)     (Succ n) =
     terminates-in pt f (f c >>= k) n
 terminates-in f (Op (∈Tail i) c k) n        =
-    pts i c (λ x → terminates-in f (k x) n)
+    pts i c (λ x -> terminates-in f (k x) n)
 \end{minted}
 \end{frame}
 
