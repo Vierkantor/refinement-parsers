@@ -173,7 +173,7 @@ Algebraic effects separate the syntax and semantics of effects.
 	\item The semantics assigns meaning to these operations
 \end{itemize}
 
-In this work, we use a free monad to model effectful programs:
+In this work, we use a free monad to model effectful programs in Agda:
 
 \begin{minted}{Agda}
 data Free (C : Set) (R : C -> Set) : Set -> Set where
@@ -214,14 +214,11 @@ handleList (Op Fail k) = []
 \pause
 The generic fold that computes a predicate of type \Set:
 \begin{minted}{Agda}
-[[_]] : Free C R a -> ((c : C) -> (R c -> Set))
+[[_]] : Free C R a -> ((c : C) -> (R c -> Set) -> Set)
       -> (a -> Set) -> Set
 [[ Pure x ]] alg P = P x
 [[ Op c k ]] alg P = alg c (λ x -> [[ k x ]] alg P)
 \end{minted}
-
-\pause
-Let us look at \Agda{alg : (c : C) -> (R c -> Set) -> Set}'s type.
 \end{frame}
 
 \begin{frame}[fragile]{Predicate transformer semantics}
@@ -430,7 +427,7 @@ ptParser P (x :: xs) = P (Just x) xs
 
 Now we can finish the definition and prove soundness unconditionally:
 \begin{minted}{Agda}
-match (r *) = Op iRec (Epsilon | r · (r *)) eitherToList
+match (r *) = Op iRec (Epsilon | r · (r *))
 
 matchSound : (r : Regex) (xs : String) ->
     [[ ⊤ , post r xs ]] ⊑ [[ match r xs ]]
